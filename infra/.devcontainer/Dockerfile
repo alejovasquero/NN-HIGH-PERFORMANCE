@@ -5,7 +5,7 @@ ARG USER_NAME=arch
 
 RUN useradd -m ${USER_NAME} 
 
-RUN pacman -Sy --noconfirm nodejs npm git fzf && npm install -g aws-cdk
+RUN pacman -Sy --noconfirm nodejs npm git fzf openssh && npm install -g aws-cdk
 
 RUN curl -LO https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz \
     && rm -rf /usr/local/go && tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz \
