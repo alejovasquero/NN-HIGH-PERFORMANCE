@@ -1,11 +1,17 @@
 FROM archlinux:base-devel-20250511.0.348143 AS arch
 
+ARG NODE_VERSION=22.0
 ARG GO_VERSION=1.24.3
 ARG USER_NAME=arch
 
 RUN useradd -m ${USER_NAME} 
 
-RUN pacman -Sy --noconfirm nodejs npm git fzf openssh cmake && npm install -g aws-cdk
+RUN pacman -Sy --noconfirm git fzf openssh cmake
+
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+ENV NVM_DIR=/root/.nvm
+RUN bash -c "source $NVM_DIR/nvm.sh && nvm install $NODE_VERSION"
+
 
 RUN curl -LO https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz \
     && rm -rf /usr/local/go && tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz \
@@ -18,7 +24,12 @@ RUN git clone https://github.com/neovim/neovim --branch stable --depth 1 \
     && make install \
     && cd .. && rm -r neovim
 
-ENV PATH="/usr/local/go/bin:${PATH}"
+ENV PATH="/usr/local/go/bin:/root/.nvm/versions/node/v22.0.0/bin:${PATH}"
+
+
+# RUN node -v && npm -v
+
+# RUN npm install -g aws-cdk
 
 USER arch
 

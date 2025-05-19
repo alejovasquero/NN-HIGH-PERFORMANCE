@@ -1,16 +1,34 @@
 package main
 
 import (
+	"log"
 
-	// "github.com/aws/aws-cdk-go/awscdk/v2/awssqs"
-
+	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
+	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/pkg/bootstrap"
 	"github.com/aws/jsii-runtime-go"
+	"go.uber.org/dig"
 )
+
+func initStacks() commons.Account {
+	container := dig.New()
+
+	account := bootstrap.MainAccount()
+
+	err := container.Provide(func() commons.Account { return account })
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// stacks.MetaFlowStack(account)
+
+	return account
+}
 
 func main() {
 	defer jsii.Close()
 
-	app := StartInject()
+	account := initStacks()
 
-	app.Synth(nil)
+	account.App.Synth(nil)
 }
