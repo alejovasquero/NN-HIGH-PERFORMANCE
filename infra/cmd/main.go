@@ -5,6 +5,7 @@ import (
 
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/pkg/bootstrap"
+	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/pkg/stacks"
 	"github.com/aws/jsii-runtime-go"
 	"go.uber.org/dig"
 )
@@ -20,7 +21,7 @@ func initStacks() commons.Account {
 		log.Panic(err)
 	}
 
-	// stacks.MetaFlowStack(account)
+	stacks.MetaFlowStack(account)
 
 	return account
 }
