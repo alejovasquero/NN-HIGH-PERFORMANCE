@@ -5,3 +5,33 @@ import "github.com/aws/aws-cdk-go/awscdk/v2"
 type Account struct {
 	App awscdk.App
 }
+
+type IStack interface {
+	GetStack() awscdk.Stack
+	GetName() string
+}
+
+type Stack struct {
+	Name  string
+	Stack awscdk.Stack
+}
+
+func (s Stack) GetStack() awscdk.Stack {
+	return s.Stack
+}
+
+func (s Stack) GetName() string {
+	return s.Name
+}
+
+type IResource interface {
+	GetResource() awscdk.Resource
+}
+
+type Resource struct {
+	Resource awscdk.Resource
+}
+
+func (r Resource) GetResource() awscdk.Resource {
+	return r.Resource
+}
