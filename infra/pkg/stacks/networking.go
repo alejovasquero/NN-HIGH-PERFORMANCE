@@ -1,33 +1,37 @@
 package stacks
 
 import (
+	"fmt"
+
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
+	"go.uber.org/fx"
 )
 
-type MetaflowNetworkingStack struct {
-	Stack     awscdk.Stack
-	Resources MetaflowNetworkingStackResources
+type MetaflowNetworkingInput struct {
+	fx.In
+	Account commons.Account
 }
 
-type MetaflowNetworkingStackResources struct {
-	VPC awsec2.Vpc
+type MetaflowNetworkingOutput struct {
+	fx.Out
+	Stack awscdk.Stack `group:"stacks"`
+	VPC   awsec2.Vpc   `name:"metaflow_vpc"`
 }
 
-func BuildMetaflowNetworkingStack(account commons.Account) MetaflowNetworkingStack {
+func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetworkingOutput {
 	stack_name := "MetaflowNetworkingStack"
 
 	nested_stack := awscdk.NewStack(
-		account.App,
+		input.Account.App,
 		&stack_name,
 		nil,
 	)
-	return MetaflowNetworkingStack{
+	fmt.Println("RUNNEDDDD")
+	return MetaflowNetworkingOutput{
 		Stack: nested_stack,
-		Resources: MetaflowNetworkingStackResources{
-			VPC: MetaflowVPC(nested_stack),
-		},
+		VPC:   MetaflowVPC(nested_stack),
 	}
 }
 
