@@ -5,7 +5,7 @@ go 1.24.3
 require (
 	github.com/aws/aws-cdk-go/awscdk/v2 v2.196.0
 	github.com/aws/jsii-runtime-go v1.112.0
-	go.uber.org/dig v1.19.0
+	go.uber.org/fx v1.24.0
 )
 
 require (
@@ -18,7 +18,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/yuin/goldmark v1.4.13 // indirect
-	go.uber.org/fx v1.24.0 // indirect
+	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
