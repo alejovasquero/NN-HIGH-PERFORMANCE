@@ -62,5 +62,22 @@ func fargateSecurityGroup(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.SecurityGro
 			Vpc: vpc,
 		},
 	)
+
+	fromPort, toPort := float64(8080), float64(8080)
+	ingressRuleName := "Allow connection with port 8080 for the virtual net"
+	securityGroup.AddIngressRule(
+		awsec2.Peer_AnyIpv4(),
+		awsec2.NewPort(
+			&awsec2.PortProps{
+				FromPort:             &fromPort,
+				ToPort:               &toPort,
+				Protocol:             awsec2.Protocol_TCP,
+				StringRepresentation: &ingressRuleName,
+			},
+		),
+		&ingressRuleName,
+		nil,
+	)
+
 	return securityGroup
 }
