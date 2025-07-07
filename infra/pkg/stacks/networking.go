@@ -1,8 +1,6 @@
 package stacks
 
 import (
-	"fmt"
-
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
@@ -22,6 +20,8 @@ type MetaflowNetworkingOutput struct {
 	GatewayAttachment awsec2.CfnVPCGatewayAttachment `name:"metaflow_gateway_attachment"`
 	RouteTable        awsec2.CfnRouteTable           `name:"metaflow_route_table"`
 	Route             awsec2.CfnRoute                `name:"metaflow_route"`
+	SubnetA           awsec2.Subnet                  `name:"metaflow_subnet_a"`
+	SubnetB           awsec2.Subnet                  `name:"metaflow_subnet_b"`
 }
 
 func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetworkingOutput {
@@ -34,9 +34,25 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 	)
 
 	vpc := metaflowVPC(nested_stack)
+	subnetA := metaflowSubnetA(nested_stack, vpc)
+	subnetB := metaflowSubnetB(nested_stack, vpc)
+
 	iGateway := metaflowVPCInternetGateway(nested_stack)
 	gatewayAttachment := internetGatewayAttachment(nested_stack, vpc, iGateway)
 	routeTable, route := metaflowDefaultGateway(nested_stack, vpc, iGateway)
+
+	subnetRouteTableAssociation(
+		"subnetATableAssocitation",
+		nested_stack,
+		subnetA,
+		routeTable,
+	)
+	subnetRouteTableAssociation(
+		"subnetBTableAssocitation",
+		nested_stack,
+		subnetB,
+		routeTable,
+	)
 
 	return MetaflowNetworkingOutput{
 		Stack:             nested_stack,
@@ -45,6 +61,8 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 		GatewayAttachment: gatewayAttachment,
 		RouteTable:        routeTable,
 		Route:             route,
+		SubnetA:           subnetA,
+		SubnetB:           subnetB,
 	}
 }
 
@@ -52,6 +70,8 @@ func metaflowVPC(stack awscdk.Stack) awsec2.Vpc {
 	name := "MetaflowVPC"
 	enableDNSSupport := true
 	enableDNSHostName := true
+	cidr := "10.20.0.0/16"
+
 	vpc := awsec2.NewVpc(
 		stack,
 		&name,
@@ -59,9 +79,42 @@ func metaflowVPC(stack awscdk.Stack) awsec2.Vpc {
 			SubnetConfiguration: &[]*awsec2.SubnetConfiguration{},
 			EnableDnsSupport:    &enableDNSSupport,
 			EnableDnsHostnames:  &enableDNSHostName,
+			IpAddresses:         awsec2.IpAddresses_Cidr(&cidr),
 		},
 	)
 	return vpc
+}
+
+func metaflowSubnetA(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.Subnet {
+	subnetACIDR := "10.20.0.0/24"
+	subnetAName := "SubnetA"
+	subnetA := awsec2.NewSubnet(
+		stack,
+		&subnetAName,
+		&awsec2.SubnetProps{
+			VpcId:            vpc.VpcId(),
+			CidrBlock:        &subnetACIDR,
+			AvailabilityZone: (*stack.AvailabilityZones())[0],
+		},
+	)
+
+	return subnetA
+}
+
+func metaflowSubnetB(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.Subnet {
+	subnetBCIDR := "10.20.1.0/24"
+	subnetBName := "SubnetB"
+	subnetB := awsec2.NewSubnet(
+		stack,
+		&subnetBName,
+		&awsec2.SubnetProps{
+			VpcId:            vpc.VpcId(),
+			CidrBlock:        &subnetBCIDR,
+			AvailabilityZone: (*stack.AvailabilityZones())[0],
+		},
+	)
+
+	return subnetB
 }
 
 func metaflowVPCInternetGateway(stack awscdk.Stack) awsec2.CfnInternetGateway {
@@ -97,15 +150,28 @@ func metaflowDefaultGateway(stack awscdk.Stack, vpc awsec2.Vpc, internetGateway 
 			VpcId: vpc.VpcId(),
 		},
 	)
-	fmt.Println("HELLO")
+
 	nameRoute := "MetaflowMainRoute"
+	destinationCidrBlock := "0.0.0.0/0"
 	route := awsec2.NewCfnRoute(
 		stack,
 		&nameRoute,
 		&awsec2.CfnRouteProps{
-			RouteTableId: routeTable.Ref(),
-			GatewayId:    internetGateway.Ref(),
+			RouteTableId:         routeTable.Ref(),
+			GatewayId:            internetGateway.Ref(),
+			DestinationCidrBlock: &destinationCidrBlock,
 		},
 	)
 	return routeTable, route
+}
+
+func subnetRouteTableAssociation(name string, stack awscdk.Stack, subnet awsec2.Subnet, routeTable awsec2.CfnRouteTable) awsec2.CfnSubnetRouteTableAssociation {
+	return awsec2.NewCfnSubnetRouteTableAssociation(
+		stack,
+		&name,
+		&awsec2.CfnSubnetRouteTableAssociationProps{
+			RouteTableId: routeTable.Ref(),
+			SubnetId:     subnet.SubnetId(),
+		},
+	)
 }
