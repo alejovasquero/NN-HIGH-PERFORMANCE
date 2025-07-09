@@ -42,6 +42,7 @@ func BuildMetaflowMetadataStack(input MetaflowMetadataInput) MetaflowMetadataOut
 	)
 	loadBalancer := loadBalancer(
 		stack,
+		input.VPC,
 		input.SubnetA,
 		input.SubnetB,
 	)
@@ -112,7 +113,7 @@ func fargateSecurityGroup(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.SecurityGro
 	return securityGroup
 }
 
-func loadBalancer(stack awscdk.Stack, subNets ...awsec2.Subnet) awselasticloadbalancingv2.CfnLoadBalancer {
+func loadBalancer(stack awscdk.Stack, vpc awsec2.Vpc, subNets ...awsec2.Subnet) awselasticloadbalancingv2.CfnLoadBalancer {
 	var subNetsIds = make([]*string, len(subNets))
 	for i, v := range subNets {
 		subNetsIds[i] = v.SubnetId()
@@ -128,5 +129,121 @@ func loadBalancer(stack awscdk.Stack, subNets ...awsec2.Subnet) awselasticloadba
 		},
 	)
 
+	associateNLBListener(
+		stack,
+		vpc,
+		loadBalancer,
+	)
+	associateNLBMigrateListener(
+		stack,
+		vpc,
+		loadBalancer,
+	)
+
 	return loadBalancer
+}
+
+func associateNLBListener(stack awscdk.Stack, vpc awsec2.Vpc, loadBalancer awselasticloadbalancingv2.CfnLoadBalancer) {
+	targetGroup := awselasticloadbalancingv2.NewCfnTargetGroup(
+		stack,
+		pointer.ToString("NLB Main Group"),
+		&awselasticloadbalancingv2.CfnTargetGroupProps{
+			HealthCheckIntervalSeconds: pointer.ToFloat64(10),
+			HealthCheckProtocol:        pointer.ToString("TCP"),
+			HealthCheckTimeoutSeconds:  pointer.ToFloat64(10),
+			HealthyThresholdCount:      pointer.ToFloat64(2),
+			TargetType:                 pointer.ToString("IP"),
+			Protocol:                   pointer.ToString("TCP"),
+			VpcId:                      vpc.VpcId(),
+			UnhealthyThresholdCount:    pointer.ToFloat64(2),
+			Port:                       pointer.ToFloat64(8080),
+		},
+	)
+	_ = awselasticloadbalancingv2.NewCfnListener(
+		stack,
+		pointer.ToString("Main NLB Listener"),
+		&awselasticloadbalancingv2.CfnListenerProps{
+			Port: pointer.ToFloat64(80),
+			DefaultActions: []interface{}{
+				&awselasticloadbalancingv2.CfnListener_ActionProperty{
+					Type:           pointer.ToString("forward"),
+					TargetGroupArn: targetGroup.Ref(),
+				},
+			},
+			Protocol:        pointer.ToString("TCP"),
+			LoadBalancerArn: loadBalancer.AttrLoadBalancerArn(),
+		},
+	)
+}
+
+func associateNLBMigrateListener(stack awscdk.Stack, vpc awsec2.Vpc, loadBalancer awselasticloadbalancingv2.CfnLoadBalancer) {
+	targetGroupMigrate := awselasticloadbalancingv2.NewCfnTargetGroup(
+		stack,
+		pointer.ToString("NLB Migrate Group"),
+		&awselasticloadbalancingv2.CfnTargetGroupProps{
+			HealthCheckIntervalSeconds: pointer.ToFloat64(10),
+			HealthCheckProtocol:        pointer.ToString("TCP"),
+			HealthCheckTimeoutSeconds:  pointer.ToFloat64(10),
+			HealthyThresholdCount:      pointer.ToFloat64(2),
+			TargetType:                 pointer.ToString("IP"),
+			Protocol:                   pointer.ToString("TCP"),
+			VpcId:                      vpc.VpcId(),
+			UnhealthyThresholdCount:    pointer.ToFloat64(2),
+			Port:                       pointer.ToFloat64(8082),
+		},
+	)
+	_ = awselasticloadbalancingv2.NewCfnListener(
+		stack,
+		pointer.ToString("Migrate NLB Listener"),
+		&awselasticloadbalancingv2.CfnListenerProps{
+			Port: pointer.ToFloat64(8082),
+			DefaultActions: []interface{}{
+				&awselasticloadbalancingv2.CfnListener_ActionProperty{
+					Type:           pointer.ToString("forward"),
+					TargetGroupArn: targetGroupMigrate.Ref(),
+				},
+			},
+			Protocol:        pointer.ToString("TCP"),
+			LoadBalancerArn: loadBalancer.AttrLoadBalancerArn(),
+		},
+	)
+}
+
+type MetaflowMetadataTaskDefinitionInput struct {
+	fx.In
+	Account commons.Account
+	VPC     awsec2.Vpc    `name:"metaflow_vpc"`
+	SubnetA awsec2.Subnet `name:"metaflow_subnet_a"`
+	SubnetB awsec2.Subnet `name:"metaflow_subnet_b"`
+}
+
+type MetaflowMetadataTaskDefinitionOutput struct {
+	fx.Out
+	Stack          awscdk.Stack          `group:"stacks"`
+	MainDefinition awsecs.TaskDefinition `name:"main_task_definition"`
+}
+
+func TaskDefinitionsStack(input MetaflowMetadataTaskDefinitionInput) MetaflowMetadataTaskDefinitionOutput {
+	stack := awscdk.NewStack(
+		input.Account.App,
+		pointer.ToString("Stack for metaflow task definitions"),
+		nil,
+	)
+	mainTaskDefinition := mainTaskDefinition(stack)
+
+	return MetaflowMetadataTaskDefinitionOutput{
+		Stack:          stack,
+		MainDefinition: mainTaskDefinition,
+	}
+}
+
+func mainTaskDefinition(stack awscdk.Stack) awsecs.TaskDefinition {
+	task := awsecs.NewTaskDefinition(
+		stack,
+		pointer.ToString("Definition of main metaflow service"),
+		&awsecs.TaskDefinitionProps{
+			Family: pointer.ToString("metadata-service-v2"),
+		},
+	) // TODO finish definition
+	return task
 }
