@@ -22,6 +22,7 @@ func initStacks() commons.Account {
 		fx.Supply(account),
 		fx.Provide(stacks.BuildMetaflowNetworkingStack),
 		fx.Provide(stacks.BuildMetaflowMetadataStack),
+		fx.Provide(stacks.TaskDefinitionsStack),
 		fx.Invoke(func(input StacksInput) int {
 			input.Shuwdownser.Shutdown()
 			return 0
