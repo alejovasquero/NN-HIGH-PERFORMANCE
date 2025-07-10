@@ -6,16 +6,19 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsecs"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awselasticloadbalancingv2"
 	"go.uber.org/fx"
 )
 
 type MetaflowMetadataTaskDefinitionInput struct {
 	fx.In
-	Account              commons.Account
-	VPC                  awsec2.Vpc           `name:"metaflow_vpc"`
-	FargateSecurityGroup awsec2.SecurityGroup `name:"fargate_security_group"`
-	SubnetA              awsec2.Subnet        `name:"metaflow_subnet_a"`
-	SubnetB              awsec2.Subnet        `name:"metaflow_subnet_b"`
+	Account               commons.Account
+	VPC                   awsec2.Vpc                               `name:"metaflow_vpc"`
+	FargateSecurityGroup  awsec2.SecurityGroup                     `name:"fargate_security_group"`
+	SubnetA               awsec2.Subnet                            `name:"metaflow_subnet_a"`
+	SubnetB               awsec2.Subnet                            `name:"metaflow_subnet_b"`
+	NLBTargetGroup        awselasticloadbalancingv2.CfnTargetGroup `name:"nlb_target_group"`
+	NLBTargetGroupMigrate awselasticloadbalancingv2.CfnTargetGroup `name:"nlb_target_group_migrate"`
 }
 
 type MetaflowMetadataTaskDefinitionOutput struct {
@@ -32,7 +35,14 @@ func TaskDefinitionsStack(input MetaflowMetadataTaskDefinitionInput) MetaflowMet
 		nil,
 	)
 	mainTaskDefinition := mainTaskDefinition(stack)
-	mainService := mainService(stack, input.FargateSecurityGroup, mainTaskDefinition, input.SubnetA, input.SubnetB)
+	mainService := mainService(
+		stack,
+		input.FargateSecurityGroup,
+		mainTaskDefinition,
+		input.NLBTargetGroup,
+		input.NLBTargetGroupMigrate,
+		input.SubnetA,
+		input.SubnetB)
 
 	return MetaflowMetadataTaskDefinitionOutput{
 		Stack:          stack,
@@ -41,7 +51,13 @@ func TaskDefinitionsStack(input MetaflowMetadataTaskDefinitionInput) MetaflowMet
 	}
 }
 
-func mainService(stack awscdk.Stack, securityGroup awsec2.SecurityGroup, taskDefinition awsecs.TaskDefinition, subnets ...awsec2.Subnet) awsecs.CfnService {
+func mainService(
+	stack awscdk.Stack,
+	securityGroup awsec2.SecurityGroup,
+	taskDefinition awsecs.TaskDefinition,
+	nlbTarget awselasticloadbalancingv2.CfnTargetGroup,
+	migrateTarget awselasticloadbalancingv2.CfnTargetGroup,
+	subnets ...awsec2.Subnet) awsecs.CfnService {
 	subnetsIds := make([]*string, len(subnets))
 
 	for i, v := range subnets {
@@ -68,6 +84,18 @@ func mainService(stack awscdk.Stack, securityGroup awsec2.SecurityGroup, taskDef
 				},
 			},
 			TaskDefinition: taskDefinition.ToString(),
+			LoadBalancers: &[]awsecs.CfnService_LoadBalancerProperty{
+				{
+					ContainerName:  pointer.ToString("metadata-service-v2"),
+					ContainerPort:  nlbTarget.Port(),
+					TargetGroupArn: nlbTarget.Ref(),
+				},
+				{
+					ContainerName:  pointer.ToString("metadata-service-v2"),
+					ContainerPort:  migrateTarget.Port(),
+					TargetGroupArn: migrateTarget.Ref(),
+				},
+			},
 		},
 	)
 	return service

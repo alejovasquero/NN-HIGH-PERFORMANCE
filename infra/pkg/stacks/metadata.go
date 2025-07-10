@@ -21,10 +21,12 @@ type MetaflowMetadataInput struct {
 
 type MetaflowMetadataOutput struct {
 	fx.Out
-	Stack                awscdk.Stack                              `group:"stacks"`
-	ECSCluster           awsecs.Cluster                            `name:"ecs_cluster"`
-	FargateSecurityGroup awsec2.SecurityGroup                      `name:"fargate_security_group"`
-	LoadBalancer         awselasticloadbalancingv2.CfnLoadBalancer `name:"network_load_balancer"`
+	Stack                 awscdk.Stack                              `group:"stacks"`
+	ECSCluster            awsecs.Cluster                            `name:"ecs_cluster"`
+	FargateSecurityGroup  awsec2.SecurityGroup                      `name:"fargate_security_group"`
+	LoadBalancer          awselasticloadbalancingv2.CfnLoadBalancer `name:"network_load_balancer"`
+	NLBTargetGroup        awselasticloadbalancingv2.CfnTargetGroup  `name:"nlb_target_group"`
+	NLBTargetGroupMigrate awselasticloadbalancingv2.CfnTargetGroup  `name:"nlb_target_group_migrate"`
 }
 
 func BuildMetaflowMetadataStack(input MetaflowMetadataInput) MetaflowMetadataOutput {
@@ -47,11 +49,25 @@ func BuildMetaflowMetadataStack(input MetaflowMetadataInput) MetaflowMetadataOut
 		input.SubnetB,
 	)
 
+	nlbGroup, _ := associateNLBListener(
+		stack,
+		input.VPC,
+		loadBalancer,
+	)
+
+	nlbGroupMigrate, _ := associateNLBMigrateListener(
+		stack,
+		input.VPC,
+		loadBalancer,
+	)
+
 	return MetaflowMetadataOutput{
-		Stack:                stack,
-		ECSCluster:           ecsCluster,
-		FargateSecurityGroup: fargateSecurityGroup,
-		LoadBalancer:         loadBalancer,
+		Stack:                 stack,
+		ECSCluster:            ecsCluster,
+		FargateSecurityGroup:  fargateSecurityGroup,
+		LoadBalancer:          loadBalancer,
+		NLBTargetGroup:        nlbGroup,
+		NLBTargetGroupMigrate: nlbGroupMigrate,
 	}
 }
 
@@ -129,21 +145,10 @@ func loadBalancer(stack awscdk.Stack, vpc awsec2.Vpc, subNets ...awsec2.Subnet) 
 		},
 	)
 
-	associateNLBListener(
-		stack,
-		vpc,
-		loadBalancer,
-	)
-	associateNLBMigrateListener(
-		stack,
-		vpc,
-		loadBalancer,
-	)
-
 	return loadBalancer
 }
 
-func associateNLBListener(stack awscdk.Stack, vpc awsec2.Vpc, loadBalancer awselasticloadbalancingv2.CfnLoadBalancer) {
+func associateNLBListener(stack awscdk.Stack, vpc awsec2.Vpc, loadBalancer awselasticloadbalancingv2.CfnLoadBalancer) (awselasticloadbalancingv2.CfnTargetGroup, awselasticloadbalancingv2.CfnListener) {
 	targetGroup := awselasticloadbalancingv2.NewCfnTargetGroup(
 		stack,
 		pointer.ToString("NLB Main Group"),
@@ -159,7 +164,7 @@ func associateNLBListener(stack awscdk.Stack, vpc awsec2.Vpc, loadBalancer awsel
 			Port:                       pointer.ToFloat64(8080),
 		},
 	)
-	_ = awselasticloadbalancingv2.NewCfnListener(
+	listener := awselasticloadbalancingv2.NewCfnListener(
 		stack,
 		pointer.ToString("Main NLB Listener"),
 		&awselasticloadbalancingv2.CfnListenerProps{
@@ -174,9 +179,11 @@ func associateNLBListener(stack awscdk.Stack, vpc awsec2.Vpc, loadBalancer awsel
 			LoadBalancerArn: loadBalancer.AttrLoadBalancerArn(),
 		},
 	)
+
+	return targetGroup, listener
 }
 
-func associateNLBMigrateListener(stack awscdk.Stack, vpc awsec2.Vpc, loadBalancer awselasticloadbalancingv2.CfnLoadBalancer) {
+func associateNLBMigrateListener(stack awscdk.Stack, vpc awsec2.Vpc, loadBalancer awselasticloadbalancingv2.CfnLoadBalancer) (awselasticloadbalancingv2.CfnTargetGroup, awselasticloadbalancingv2.CfnListener) {
 	targetGroupMigrate := awselasticloadbalancingv2.NewCfnTargetGroup(
 		stack,
 		pointer.ToString("NLB Migrate Group"),
@@ -192,7 +199,7 @@ func associateNLBMigrateListener(stack awscdk.Stack, vpc awsec2.Vpc, loadBalance
 			Port:                       pointer.ToFloat64(8082),
 		},
 	)
-	_ = awselasticloadbalancingv2.NewCfnListener(
+	listener := awselasticloadbalancingv2.NewCfnListener(
 		stack,
 		pointer.ToString("Migrate NLB Listener"),
 		&awselasticloadbalancingv2.CfnListenerProps{
@@ -207,4 +214,6 @@ func associateNLBMigrateListener(stack awscdk.Stack, vpc awsec2.Vpc, loadBalance
 			LoadBalancerArn: loadBalancer.AttrLoadBalancerArn(),
 		},
 	)
+
+	return targetGroupMigrate, listener
 }
