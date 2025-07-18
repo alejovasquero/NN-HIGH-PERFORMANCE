@@ -32,7 +32,11 @@ func TaskDefinitionsStack(input MetaflowMetadataTaskDefinitionInput) MetaflowMet
 	stack := awscdk.NewStack(
 		input.Account.App,
 		pointer.ToString("MetaflowCoreStack"),
-		nil,
+		&awscdk.StackProps{
+			Env: &awscdk.Environment{
+				Account: &input.Account.AccountId,
+			},
+		},
 	)
 	mainTaskDefinition := mainTaskDefinition(stack)
 	mainService := mainService(

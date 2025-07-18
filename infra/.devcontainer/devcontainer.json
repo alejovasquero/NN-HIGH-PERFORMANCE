@@ -8,6 +8,13 @@
 	},
 	"features": {
 		"ghcr.io/devcontainers-extra/features/npm-package:1": {}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"golang.go"
+			]
+		}
 	}
 
 	// Features to add to the dev container. More info: https://containers.dev/features.

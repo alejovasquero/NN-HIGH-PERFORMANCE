@@ -34,7 +34,11 @@ func BuildMetaflowMetadataStack(input MetaflowMetadataInput) MetaflowMetadataOut
 	stack := awscdk.NewStack(
 		input.Account.App,
 		&stack_name,
-		nil,
+		&awscdk.StackProps{
+			Env: &awscdk.Environment{
+				Account: &input.Account.AccountId,
+			},
+		},
 	)
 
 	ecsCluster := ecsCluster(stack)

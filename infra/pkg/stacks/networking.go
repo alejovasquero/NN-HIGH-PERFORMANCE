@@ -30,7 +30,11 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 	nested_stack := awscdk.NewStack(
 		input.Account.App,
 		&stack_name,
-		nil,
+		&awscdk.StackProps{
+			Env: &awscdk.Environment{
+				Account: &input.Account.AccountId,
+			},
+		},
 	)
 
 	vpc := metaflowVPC(nested_stack)
