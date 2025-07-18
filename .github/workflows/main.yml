@@ -30,4 +30,5 @@ jobs:
       # Upload a file to AWS s3
       - name: Copy index.html to s3
         run: |
+          cd infra
           cdk deploy --all
