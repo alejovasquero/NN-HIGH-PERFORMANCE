@@ -28,7 +28,7 @@ jobs:
           role-session-name: github-session
           aws-region: ${{ env.AWS_REGION }}
       # Upload a file to AWS s3
-      - name: Copy index.html to s3
+      - name: Deploy to AWS
         run: |
           cd infra
-          cdk deploy --all
+          cdk deploy --all --require-approval never
