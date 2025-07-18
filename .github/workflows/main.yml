@@ -13,6 +13,14 @@ jobs:
   CDKDeployment:
     runs-on: ubuntu-latest
     steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Install AWS CDK
+        run: npm install -g aws-cdk@2.1021.0
       - name: Git clone the repository
         uses: actions/checkout@v4
       - name: configure aws credentials
