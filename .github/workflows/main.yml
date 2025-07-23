@@ -31,4 +31,4 @@ jobs:
       - name: Deploy to AWS
         run: |
           cd infra
-          cdk deploy --all --require-approval never
+          cdk deploy --all --require-approval never --concurrency 100
