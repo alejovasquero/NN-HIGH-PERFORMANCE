@@ -33,9 +33,7 @@ func TaskDefinitionsStack(input MetaflowMetadataTaskDefinitionInput) MetaflowMet
 		input.Account.App,
 		pointer.ToString("MetaflowCoreStack"),
 		&awscdk.StackProps{
-			Env: &awscdk.Environment{
-				Account: &input.Account.AccountId,
-			},
+			Env: input.Account.Env(),
 		},
 	)
 	mainTaskDefinition := mainTaskDefinition(stack)
@@ -62,11 +60,18 @@ func mainService(
 	nlbTarget awselasticloadbalancingv2.CfnTargetGroup,
 	migrateTarget awselasticloadbalancingv2.CfnTargetGroup,
 	subnets ...awsec2.Subnet) awsecs.CfnService {
+
 	subnetsIds := make([]*string, len(subnets))
 
 	for i, v := range subnets {
 		subnetsIds[i] = v.SubnetId()
 	}
+
+	cluster := awsecs.NewCfnCluster(
+		stack,
+		pointer.ToString("ECSCluster"),
+		nil,
+	)
 
 	service := awsecs.NewCfnService(
 		stack,
@@ -87,7 +92,7 @@ func mainService(
 					Subnets: &subnetsIds,
 				},
 			},
-			TaskDefinition: taskDefinition.ToString(),
+			TaskDefinition: taskDefinition.TaskDefinitionArn(),
 			LoadBalancers: &[]awsecs.CfnService_LoadBalancerProperty{
 				{
 					ContainerName:  pointer.ToString("metadata-service-v2"),
@@ -100,6 +105,7 @@ func mainService(
 					TargetGroupArn: migrateTarget.Ref(),
 				},
 			},
+			Cluster: cluster.Ref(),
 		},
 	)
 	return service

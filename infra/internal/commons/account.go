@@ -7,6 +7,12 @@ type Account struct {
 	AccountId string
 }
 
+func (a *Account) Env() *awscdk.Environment {
+	return &awscdk.Environment{
+		Account: &a.AccountId,
+	}
+}
+
 type IStack interface {
 	GetStack() awscdk.Stack
 	GetName() string

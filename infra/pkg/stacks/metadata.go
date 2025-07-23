@@ -35,9 +35,7 @@ func BuildMetaflowMetadataStack(input MetaflowMetadataInput) MetaflowMetadataOut
 		input.Account.App,
 		&stack_name,
 		&awscdk.StackProps{
-			Env: &awscdk.Environment{
-				Account: &input.Account.AccountId,
-			},
+			Env: input.Account.Env(),
 		},
 	)
 

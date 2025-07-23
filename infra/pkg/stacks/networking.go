@@ -31,9 +31,7 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 		input.Account.App,
 		&stack_name,
 		&awscdk.StackProps{
-			Env: &awscdk.Environment{
-				Account: &input.Account.AccountId,
-			},
+			Env: input.Account.Env(),
 		},
 	)
 
@@ -114,7 +112,7 @@ func metaflowSubnetB(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.Subnet {
 		&awsec2.SubnetProps{
 			VpcId:            vpc.VpcId(),
 			CidrBlock:        &subnetBCIDR,
-			AvailabilityZone: (*stack.AvailabilityZones())[0],
+			AvailabilityZone: (*stack.AvailabilityZones())[1],
 		},
 	)
 
