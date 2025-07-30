@@ -7,6 +7,8 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsecs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awselasticloadbalancingv2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"go.uber.org/fx"
 )
 
@@ -14,6 +16,7 @@ type MetaflowMetadataTaskDefinitionInput struct {
 	fx.In
 	Account               commons.Account
 	VPC                   awsec2.Vpc                               `name:"metaflow_vpc"`
+	ECSCluster            awsecs.Cluster                           `name:"ecs_cluster"`
 	FargateSecurityGroup  awsec2.SecurityGroup                     `name:"fargate_security_group"`
 	SubnetA               awsec2.Subnet                            `name:"metaflow_subnet_a"`
 	SubnetB               awsec2.Subnet                            `name:"metaflow_subnet_b"`
@@ -42,6 +45,7 @@ func TaskDefinitionsStack(input MetaflowMetadataTaskDefinitionInput) MetaflowMet
 		input.FargateSecurityGroup,
 		mainTaskDefinition,
 		input.NLBTargetGroup,
+		input.ECSCluster,
 		input.NLBTargetGroupMigrate,
 		input.SubnetA,
 		input.SubnetB)
@@ -58,6 +62,7 @@ func mainService(
 	securityGroup awsec2.SecurityGroup,
 	taskDefinition awsecs.TaskDefinition,
 	nlbTarget awselasticloadbalancingv2.CfnTargetGroup,
+	cluster awsecs.Cluster,
 	migrateTarget awselasticloadbalancingv2.CfnTargetGroup,
 	subnets ...awsec2.Subnet) awsecs.CfnService {
 
@@ -66,12 +71,6 @@ func mainService(
 	for i, v := range subnets {
 		subnetsIds[i] = v.SubnetId()
 	}
-
-	cluster := awsecs.NewCfnCluster(
-		stack,
-		pointer.ToString("ECSCluster"),
-		nil,
-	)
 
 	service := awsecs.NewCfnService(
 		stack,
@@ -105,13 +104,22 @@ func mainService(
 					TargetGroupArn: migrateTarget.Ref(),
 				},
 			},
-			Cluster: cluster.Ref(),
+			Cluster: cluster.ClusterArn(),
 		},
 	)
 	return service
 }
 
 func mainTaskDefinition(stack awscdk.Stack) awsecs.TaskDefinition {
+	executionRole := awsiam.NewRole(
+		stack,
+		pointer.ToString("ECS Role"),
+		&awsiam.RoleProps{
+			AssumedBy: awsiam.NewServicePrincipal(pointer.ToString("ecs-tasks.amazonaws.com"), nil),
+			Path:      pointer.ToString("/"),
+		},
+	)
+
 	task := awsecs.NewTaskDefinition(
 		stack,
 		pointer.ToString("Definition of main metaflow service"),
@@ -121,13 +129,41 @@ func mainTaskDefinition(stack awscdk.Stack) awsecs.TaskDefinition {
 			MemoryMiB:     pointer.ToString("1024"),
 			NetworkMode:   awsecs.NetworkMode_AWS_VPC,
 			Compatibility: awsecs.Compatibility_EC2_AND_FARGATE,
+			ExecutionRole: executionRole,
 		},
+	)
+
+	containerLogGroup := awslogs.NewLogGroup(
+		stack,
+		pointer.ToString("EcsLogGroup"),
+		&awslogs.LogGroupProps{
+			LogGroupName:  pointer.ToString("ecs/metadata-service-v2"),
+			Retention:     awslogs.RetentionDays_EIGHTEEN_MONTHS,
+			RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
+		},
+	)
+	containerLogGroup.GrantWrite(executionRole)
+	executionRole.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Effect: awsiam.Effect_ALLOW,
+				Actions: &[]*string{
+					pointer.ToString("ecr:GetAuthorizationToken"),
+					pointer.ToString("ecr:BatchCheckLayerAvailability"),
+					pointer.ToString("ecr:GetDownloadUrlForLayer"),
+					pointer.ToString("ecr:BatchGetImage"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+			},
+		),
 	)
 
 	task.AddContainer(
 		pointer.ToString("Metaflow execution container"),
 		&awsecs.ContainerDefinitionOptions{
-			ContainerName: pointer.ToString("metaflow-service-v2"),
+			ContainerName: pointer.ToString("metadata-service-v2"),
 			Environment: &map[string]*string{
 				"MF_METADATA_DB_HOST":     pointer.ToString("TODO put rds host here"),
 				"MF_METADATA_DB_PORT":     pointer.ToString("5432"),
@@ -152,6 +188,7 @@ func mainTaskDefinition(stack awscdk.Stack) awsecs.TaskDefinition {
 			Logging: awsecs.LogDriver_AwsLogs(
 				&awsecs.AwsLogDriverProps{
 					StreamPrefix: pointer.ToString("ecs"),
+					LogGroup:     containerLogGroup,
 				},
 			),
 		},
