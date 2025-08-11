@@ -9,6 +9,8 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awselasticloadbalancingv2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsrds"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
 	"go.uber.org/fx"
 )
 
@@ -18,10 +20,12 @@ type MetaflowMetadataTaskDefinitionInput struct {
 	VPC                   awsec2.Vpc                               `name:"metaflow_vpc"`
 	ECSCluster            awsecs.Cluster                           `name:"ecs_cluster"`
 	FargateSecurityGroup  awsec2.SecurityGroup                     `name:"fargate_security_group"`
-	SubnetA               awsec2.Subnet                            `name:"metaflow_subnet_a"`
-	SubnetB               awsec2.Subnet                            `name:"metaflow_subnet_b"`
+	SubnetA               awsec2.CfnSubnet                         `name:"metaflow_subnet_a"`
+	SubnetB               awsec2.CfnSubnet                         `name:"metaflow_subnet_b"`
 	NLBTargetGroup        awselasticloadbalancingv2.CfnTargetGroup `name:"nlb_target_group"`
 	NLBTargetGroupMigrate awselasticloadbalancingv2.CfnTargetGroup `name:"nlb_target_group_migrate"`
+	DB                    awsrds.CfnDBInstance                     `name:"DB"`
+	Credentials           awssecretsmanager.Secret                 `name:"db_credentials"`
 }
 
 type MetaflowMetadataTaskDefinitionOutput struct {
@@ -39,7 +43,7 @@ func TaskDefinitionsStack(input MetaflowMetadataTaskDefinitionInput) MetaflowMet
 			Env: input.Account.Env(),
 		},
 	)
-	mainTaskDefinition := mainTaskDefinition(stack)
+	mainTaskDefinition := mainTaskDefinition(stack, input)
 	mainService := mainService(
 		stack,
 		input.FargateSecurityGroup,
@@ -64,12 +68,12 @@ func mainService(
 	nlbTarget awselasticloadbalancingv2.CfnTargetGroup,
 	cluster awsecs.Cluster,
 	migrateTarget awselasticloadbalancingv2.CfnTargetGroup,
-	subnets ...awsec2.Subnet) awsecs.CfnService {
+	subnets ...awsec2.CfnSubnet) awsecs.CfnService {
 
 	subnetsIds := make([]*string, len(subnets))
 
 	for i, v := range subnets {
-		subnetsIds[i] = v.SubnetId()
+		subnetsIds[i] = v.Ref()
 	}
 
 	service := awsecs.NewCfnService(
@@ -110,13 +114,14 @@ func mainService(
 	return service
 }
 
-func mainTaskDefinition(stack awscdk.Stack) awsecs.TaskDefinition {
+func mainTaskDefinition(stack awscdk.Stack, input MetaflowMetadataTaskDefinitionInput) awsecs.TaskDefinition {
 	executionRole := awsiam.NewRole(
 		stack,
 		pointer.ToString("ECS Role"),
 		&awsiam.RoleProps{
 			AssumedBy: awsiam.NewServicePrincipal(pointer.ToString("ecs-tasks.amazonaws.com"), nil),
 			Path:      pointer.ToString("/"),
+			RoleName:  awscdk.PhysicalName_GENERATE_IF_NEEDED(),
 		},
 	)
 
@@ -165,11 +170,10 @@ func mainTaskDefinition(stack awscdk.Stack) awsecs.TaskDefinition {
 		&awsecs.ContainerDefinitionOptions{
 			ContainerName: pointer.ToString("metadata-service-v2"),
 			Environment: &map[string]*string{
-				"MF_METADATA_DB_HOST":     pointer.ToString("TODO put rds host here"),
+				"MF_METADATA_DB_HOST":     input.DB.AttrEndpointAddress(),
 				"MF_METADATA_DB_PORT":     pointer.ToString("5432"),
 				"MF_METADATA_DB_SSL_MODE": pointer.ToString("prefer"),
-				"MF_METADATA_DB_USER":     pointer.ToString("master"),
-				"MF_METADATA_DB_PSWD":     pointer.ToString("TODO PUT PASSWORD USING SECRETS MANAGER"),
+				"MF_METADATA_DB_NAME":     pointer.ToString("metaflow"),
 			},
 			Cpu:            pointer.ToFloat64(512),
 			MemoryLimitMiB: pointer.ToFloat64(1024),
@@ -191,8 +195,14 @@ func mainTaskDefinition(stack awscdk.Stack) awsecs.TaskDefinition {
 					LogGroup:     containerLogGroup,
 				},
 			),
+			Secrets: &map[string]awsecs.Secret{
+				"MF_METADATA_DB_USER": awsecs.Secret_FromSecretsManager(input.Credentials, pointer.ToString("username")),
+				"MF_METADATA_DB_PSWD": awsecs.Secret_FromSecretsManager(input.Credentials, pointer.ToString("password")),
+			},
 		},
 	)
+	input.Credentials.GrantRead(executionRole, nil)
+	input.Credentials.GrantWrite(executionRole)
 
 	return task
 }

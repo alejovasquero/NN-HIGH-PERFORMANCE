@@ -14,9 +14,9 @@ import (
 type MetaflowMetadataInput struct {
 	fx.In
 	Account commons.Account
-	VPC     awsec2.Vpc    `name:"metaflow_vpc"`
-	SubnetA awsec2.Subnet `name:"metaflow_subnet_a"`
-	SubnetB awsec2.Subnet `name:"metaflow_subnet_b"`
+	VPC     awsec2.Vpc       `name:"metaflow_vpc"`
+	SubnetA awsec2.CfnSubnet `name:"metaflow_subnet_a"`
+	SubnetB awsec2.CfnSubnet `name:"metaflow_subnet_b"`
 }
 
 type MetaflowMetadataOutput struct {
@@ -131,10 +131,10 @@ func fargateSecurityGroup(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.SecurityGro
 	return securityGroup
 }
 
-func loadBalancer(stack awscdk.Stack, vpc awsec2.Vpc, subNets ...awsec2.Subnet) awselasticloadbalancingv2.CfnLoadBalancer {
+func loadBalancer(stack awscdk.Stack, vpc awsec2.Vpc, subNets ...awsec2.CfnSubnet) awselasticloadbalancingv2.CfnLoadBalancer {
 	var subNetsIds = make([]*string, len(subNets))
 	for i, v := range subNets {
-		subNetsIds[i] = v.SubnetId()
+		subNetsIds[i] = v.Ref()
 	}
 
 	loadBalancer := awselasticloadbalancingv2.NewCfnLoadBalancer(

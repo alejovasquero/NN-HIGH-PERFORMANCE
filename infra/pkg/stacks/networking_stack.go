@@ -1,6 +1,7 @@
 package stacks
 
 import (
+	"github.com/AlekSi/pointer"
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
@@ -20,8 +21,8 @@ type MetaflowNetworkingOutput struct {
 	GatewayAttachment awsec2.CfnVPCGatewayAttachment `name:"metaflow_gateway_attachment"`
 	RouteTable        awsec2.CfnRouteTable           `name:"metaflow_route_table"`
 	Route             awsec2.CfnRoute                `name:"metaflow_route"`
-	SubnetA           awsec2.Subnet                  `name:"metaflow_subnet_a"`
-	SubnetB           awsec2.Subnet                  `name:"metaflow_subnet_b"`
+	SubnetA           awsec2.CfnSubnet               `name:"metaflow_subnet_a"`
+	SubnetB           awsec2.CfnSubnet               `name:"metaflow_subnet_b"`
 }
 
 func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetworkingOutput {
@@ -87,32 +88,46 @@ func metaflowVPC(stack awscdk.Stack) awsec2.Vpc {
 	return vpc
 }
 
-func metaflowSubnetA(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.Subnet {
+func metaflowSubnetA(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.CfnSubnet {
 	subnetACIDR := "10.20.0.0/24"
 	subnetAName := "SubnetA"
-	subnetA := awsec2.NewSubnet(
+	subnetA := awsec2.NewCfnSubnet(
 		stack,
 		&subnetAName,
-		&awsec2.SubnetProps{
-			VpcId:            vpc.VpcId(),
-			CidrBlock:        &subnetACIDR,
-			AvailabilityZone: (*stack.AvailabilityZones())[0],
+		&awsec2.CfnSubnetProps{
+			VpcId:               vpc.VpcId(),
+			CidrBlock:           &subnetACIDR,
+			AvailabilityZone:    (*stack.AvailabilityZones())[0],
+			MapPublicIpOnLaunch: pointer.ToBool(true),
+			Tags: &[]*awscdk.CfnTag{
+				{
+					Key:   pointer.ToString("Name"),
+					Value: &subnetAName,
+				},
+			},
 		},
 	)
 
 	return subnetA
 }
 
-func metaflowSubnetB(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.Subnet {
+func metaflowSubnetB(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.CfnSubnet {
 	subnetBCIDR := "10.20.1.0/24"
 	subnetBName := "SubnetB"
-	subnetB := awsec2.NewSubnet(
+	subnetB := awsec2.NewCfnSubnet(
 		stack,
 		&subnetBName,
-		&awsec2.SubnetProps{
-			VpcId:            vpc.VpcId(),
-			CidrBlock:        &subnetBCIDR,
-			AvailabilityZone: (*stack.AvailabilityZones())[1],
+		&awsec2.CfnSubnetProps{
+			VpcId:               vpc.VpcId(),
+			CidrBlock:           &subnetBCIDR,
+			AvailabilityZone:    (*stack.AvailabilityZones())[1],
+			MapPublicIpOnLaunch: pointer.ToBool(true),
+			Tags: &[]*awscdk.CfnTag{
+				{
+					Key:   pointer.ToString("Name"),
+					Value: &subnetBName,
+				},
+			},
 		},
 	)
 
@@ -150,6 +165,12 @@ func metaflowDefaultGateway(stack awscdk.Stack, vpc awsec2.Vpc, internetGateway 
 		&name,
 		&awsec2.CfnRouteTableProps{
 			VpcId: vpc.VpcId(),
+			Tags: &[]*awscdk.CfnTag{
+				&awscdk.CfnTag{
+					Key:   pointer.ToString("Main"),
+					Value: pointer.ToString("true"),
+				},
+			},
 		},
 	)
 
@@ -167,13 +188,13 @@ func metaflowDefaultGateway(stack awscdk.Stack, vpc awsec2.Vpc, internetGateway 
 	return routeTable, route
 }
 
-func subnetRouteTableAssociation(name string, stack awscdk.Stack, subnet awsec2.Subnet, routeTable awsec2.CfnRouteTable) awsec2.CfnSubnetRouteTableAssociation {
+func subnetRouteTableAssociation(name string, stack awscdk.Stack, subnet awsec2.CfnSubnet, routeTable awsec2.CfnRouteTable) awsec2.CfnSubnetRouteTableAssociation {
 	return awsec2.NewCfnSubnetRouteTableAssociation(
 		stack,
 		&name,
 		&awsec2.CfnSubnetRouteTableAssociationProps{
 			RouteTableId: routeTable.Ref(),
-			SubnetId:     subnet.SubnetId(),
+			SubnetId:     subnet.Ref(),
 		},
 	)
 }
