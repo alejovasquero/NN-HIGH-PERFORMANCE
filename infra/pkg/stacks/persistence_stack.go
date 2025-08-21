@@ -4,6 +4,7 @@ import (
 	"github.com/AlekSi/pointer"
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsrds"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
@@ -13,7 +14,11 @@ import (
 
 type PersistenceStackInput struct {
 	fx.In
-	Account commons.Account
+	Account              commons.Account
+	SubnetA              awsec2.CfnSubnet     `name:"metaflow_subnet_a"`
+	SubnetB              awsec2.CfnSubnet     `name:"metaflow_subnet_b"`
+	FargateSecurityGroup awsec2.SecurityGroup `name:"fargate_security_group"`
+	DBSecurityGroup      awsec2.SecurityGroup `name:"db_security_group"`
 }
 
 type PersistenceStackOutput struct {
@@ -33,8 +38,9 @@ func BuildPersistenceStack(in PersistenceStackInput) PersistenceStackOutput {
 		},
 	)
 
+	subnetGroup := dbSubnetGroup(stack, in.SubnetA, in.SubnetB)
 	dbCredentials := dbCredentials(stack)
-	db := dbInstance(stack, dbCredentials)
+	db := dbInstance(stack, dbCredentials, subnetGroup, in)
 	_ = credentialsAttachmentToDB(stack, db, dbCredentials)
 	bucket := bucket(stack)
 
@@ -44,6 +50,23 @@ func BuildPersistenceStack(in PersistenceStackInput) PersistenceStackOutput {
 		Credentials: dbCredentials,
 		Bucket:      bucket,
 	}
+}
+
+func dbSubnetGroup(construct constructs.Construct, subnets ...awsec2.CfnSubnet) awsrds.CfnDBSubnetGroup {
+	var subnetIds = make([]*string, len(subnets))
+	for i, subnet := range subnets {
+		subnetIds[i] = subnet.Ref()
+	}
+	group := awsrds.NewCfnDBSubnetGroup(
+		construct,
+		pointer.ToString("MetaflowDBSubnetGroup"),
+		&awsrds.CfnDBSubnetGroupProps{
+			SubnetIds:                &subnetIds,
+			DbSubnetGroupDescription: pointer.ToString("Metaflow DB Subnet Group"),
+		},
+	)
+
+	return group
 }
 
 func dbCredentials(construct constructs.Construct) awssecretsmanager.Secret {
@@ -77,7 +100,7 @@ func credentialsAttachmentToDB(construct constructs.Construct, db awsrds.CfnDBIn
 	return attachment
 }
 
-func dbInstance(construct constructs.Construct, credentials awssecretsmanager.Secret) awsrds.CfnDBInstance {
+func dbInstance(construct constructs.Construct, credentials awssecretsmanager.Secret, subnetGroup awsrds.CfnDBSubnetGroup, input PersistenceStackInput) awsrds.CfnDBInstance {
 	usernameToken := credentials.SecretValueFromJson(pointer.ToString("username"))
 	passwordToken := credentials.SecretValueFromJson(pointer.ToString("password"))
 
@@ -94,6 +117,9 @@ func dbInstance(construct constructs.Construct, credentials awssecretsmanager.Se
 			EngineVersion:          awsrds.PostgresEngineVersion_VER_16_3().PostgresFullVersion(),
 			MasterUsername:         usernameToken.UnsafeUnwrap(),
 			MasterUserPassword:     passwordToken.UnsafeUnwrap(),
+			DbSubnetGroupName:      subnetGroup.Ref(),
+			VpcSecurityGroups:      &[]*string{input.DBSecurityGroup.SecurityGroupId()},
+			PubliclyAccessible:     pointer.ToBool(true),
 		},
 	)
 	return db

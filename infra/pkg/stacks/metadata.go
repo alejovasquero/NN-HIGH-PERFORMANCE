@@ -23,7 +23,6 @@ type MetaflowMetadataOutput struct {
 	fx.Out
 	Stack                 awscdk.Stack                              `group:"stacks"`
 	ECSCluster            awsecs.Cluster                            `name:"ecs_cluster"`
-	FargateSecurityGroup  awsec2.SecurityGroup                      `name:"fargate_security_group"`
 	LoadBalancer          awselasticloadbalancingv2.CfnLoadBalancer `name:"network_load_balancer"`
 	NLBTargetGroup        awselasticloadbalancingv2.CfnTargetGroup  `name:"nlb_target_group"`
 	NLBTargetGroupMigrate awselasticloadbalancingv2.CfnTargetGroup  `name:"nlb_target_group_migrate"`
@@ -40,10 +39,6 @@ func BuildMetaflowMetadataStack(input MetaflowMetadataInput) MetaflowMetadataOut
 	)
 
 	ecsCluster := ecsCluster(stack)
-	fargateSecurityGroup := fargateSecurityGroup(
-		stack,
-		input.VPC,
-	)
 	loadBalancer := loadBalancer(
 		stack,
 		input.VPC,
@@ -66,7 +61,6 @@ func BuildMetaflowMetadataStack(input MetaflowMetadataInput) MetaflowMetadataOut
 	return MetaflowMetadataOutput{
 		Stack:                 stack,
 		ECSCluster:            ecsCluster,
-		FargateSecurityGroup:  fargateSecurityGroup,
 		LoadBalancer:          loadBalancer,
 		NLBTargetGroup:        nlbGroup,
 		NLBTargetGroupMigrate: nlbGroupMigrate,
@@ -82,53 +76,6 @@ func ecsCluster(stack awscdk.Stack) awsecs.Cluster {
 			ContainerInsightsV2: awsecs.ContainerInsights_ENABLED,
 		},
 	)
-}
-
-func fargateSecurityGroup(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.SecurityGroup {
-	name := "FargateSecurityGroup"
-	securityGroup := awsec2.NewSecurityGroup(
-		stack,
-		&name,
-		&awsec2.SecurityGroupProps{
-			Vpc: vpc,
-		},
-	)
-
-	ingressRuleName := "Allow internal connections for the virtual net"
-	securityGroup.AddIngressRule(
-		awsec2.Peer_Ipv4(vpc.VpcCidrBlock()),
-		awsec2.NewPort(
-			&awsec2.PortProps{
-				FromPort:             pointer.ToFloat64(8080),
-				ToPort:               pointer.ToFloat64(8080),
-				Protocol:             awsec2.Protocol_TCP,
-				StringRepresentation: &ingressRuleName,
-			},
-		),
-		&ingressRuleName,
-		nil,
-	)
-	securityGroup.AddIngressRule(
-		awsec2.Peer_Ipv4(vpc.VpcCidrBlock()),
-		awsec2.NewPort(
-			&awsec2.PortProps{
-				Protocol:             awsec2.Protocol_TCP,
-				FromPort:             pointer.ToFloat64(8082),
-				ToPort:               pointer.ToFloat64(8082),
-				StringRepresentation: &ingressRuleName,
-			},
-		),
-		&ingressRuleName,
-		nil,
-	)
-	securityGroup.AddIngressRule(
-		securityGroup,
-		awsec2.Port_AllTraffic(),
-		&ingressRuleName,
-		nil,
-	)
-
-	return securityGroup
 }
 
 func loadBalancer(stack awscdk.Stack, vpc awsec2.Vpc, subNets ...awsec2.CfnSubnet) awselasticloadbalancingv2.CfnLoadBalancer {

@@ -5,6 +5,7 @@ import (
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
+	"github.com/aws/constructs-go/constructs/v10"
 	"go.uber.org/fx"
 )
 
@@ -15,14 +16,16 @@ type MetaflowNetworkingInput struct {
 
 type MetaflowNetworkingOutput struct {
 	fx.Out
-	Stack             awscdk.Stack                   `group:"stacks"`
-	VPC               awsec2.Vpc                     `name:"metaflow_vpc"`
-	InternetGateway   awsec2.CfnInternetGateway      `name:"metaflow_internet_gateway"`
-	GatewayAttachment awsec2.CfnVPCGatewayAttachment `name:"metaflow_gateway_attachment"`
-	RouteTable        awsec2.CfnRouteTable           `name:"metaflow_route_table"`
-	Route             awsec2.CfnRoute                `name:"metaflow_route"`
-	SubnetA           awsec2.CfnSubnet               `name:"metaflow_subnet_a"`
-	SubnetB           awsec2.CfnSubnet               `name:"metaflow_subnet_b"`
+	Stack                awscdk.Stack                   `group:"stacks"`
+	VPC                  awsec2.Vpc                     `name:"metaflow_vpc"`
+	InternetGateway      awsec2.CfnInternetGateway      `name:"metaflow_internet_gateway"`
+	GatewayAttachment    awsec2.CfnVPCGatewayAttachment `name:"metaflow_gateway_attachment"`
+	RouteTable           awsec2.CfnRouteTable           `name:"metaflow_route_table"`
+	Route                awsec2.CfnRoute                `name:"metaflow_route"`
+	SubnetA              awsec2.CfnSubnet               `name:"metaflow_subnet_a"`
+	SubnetB              awsec2.CfnSubnet               `name:"metaflow_subnet_b"`
+	FargateSecurityGroup awsec2.SecurityGroup           `name:"fargate_security_group"`
+	DBSecurityGroup      awsec2.SecurityGroup           `name:"db_security_group"`
 }
 
 func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetworkingOutput {
@@ -57,15 +60,21 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 		routeTable,
 	)
 
+	fargateSecurityGroup := fargateSecurityGroup(nested_stack, vpc)
+
+	dbSecurityGroup := dbSecurityGroup(nested_stack, vpc, fargateSecurityGroup)
+
 	return MetaflowNetworkingOutput{
-		Stack:             nested_stack,
-		VPC:               vpc,
-		InternetGateway:   iGateway,
-		GatewayAttachment: gatewayAttachment,
-		RouteTable:        routeTable,
-		Route:             route,
-		SubnetA:           subnetA,
-		SubnetB:           subnetB,
+		Stack:                nested_stack,
+		VPC:                  vpc,
+		InternetGateway:      iGateway,
+		GatewayAttachment:    gatewayAttachment,
+		RouteTable:           routeTable,
+		Route:                route,
+		SubnetA:              subnetA,
+		SubnetB:              subnetB,
+		FargateSecurityGroup: fargateSecurityGroup,
+		DBSecurityGroup:      dbSecurityGroup,
 	}
 }
 
@@ -166,7 +175,7 @@ func metaflowDefaultGateway(stack awscdk.Stack, vpc awsec2.Vpc, internetGateway 
 		&awsec2.CfnRouteTableProps{
 			VpcId: vpc.VpcId(),
 			Tags: &[]*awscdk.CfnTag{
-				&awscdk.CfnTag{
+				{
 					Key:   pointer.ToString("Main"),
 					Value: pointer.ToString("true"),
 				},
@@ -197,4 +206,84 @@ func subnetRouteTableAssociation(name string, stack awscdk.Stack, subnet awsec2.
 			SubnetId:     subnet.Ref(),
 		},
 	)
+}
+
+func dbSecurityGroup(construct constructs.Construct, vpc awsec2.Vpc, fargateSecurityGroup awsec2.SecurityGroup) awsec2.SecurityGroup {
+	dbSecurityGroup := awsec2.NewSecurityGroup(
+		construct,
+		pointer.ToString("MetaflowDBSecurityGroup"),
+		&awsec2.SecurityGroupProps{
+			Vpc: vpc,
+		},
+	)
+
+	dbSecurityGroup.AddIngressRule(
+		fargateSecurityGroup,
+		awsec2.NewPort(
+			&awsec2.PortProps{
+				FromPort:             pointer.ToFloat64(5432),
+				ToPort:               pointer.ToFloat64(5432),
+				Protocol:             awsec2.Protocol_TCP,
+				StringRepresentation: pointer.ToString("FARGATE"),
+			},
+		),
+		pointer.ToString("Allow access to DB from Fargate"),
+		nil,
+	)
+
+	dbSecurityGroup.AddIngressRule( // for debugging purposes
+		awsec2.Peer_AnyIpv4(),
+		awsec2.Port_AllTraffic(),
+		pointer.ToString("Allow access to DB from internet"),
+		nil,
+	)
+
+	return dbSecurityGroup
+}
+
+func fargateSecurityGroup(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.SecurityGroup {
+	name := "FargateSecurityGroup"
+	securityGroup := awsec2.NewSecurityGroup(
+		stack,
+		&name,
+		&awsec2.SecurityGroupProps{
+			Vpc: vpc,
+		},
+	)
+
+	ingressRuleName := "Allow internal connections for the virtual net"
+	securityGroup.AddIngressRule(
+		awsec2.Peer_Ipv4(vpc.VpcCidrBlock()),
+		awsec2.NewPort(
+			&awsec2.PortProps{
+				FromPort:             pointer.ToFloat64(8080),
+				ToPort:               pointer.ToFloat64(8080),
+				Protocol:             awsec2.Protocol_TCP,
+				StringRepresentation: &ingressRuleName,
+			},
+		),
+		&ingressRuleName,
+		nil,
+	)
+	securityGroup.AddIngressRule(
+		awsec2.Peer_Ipv4(vpc.VpcCidrBlock()),
+		awsec2.NewPort(
+			&awsec2.PortProps{
+				Protocol:             awsec2.Protocol_TCP,
+				FromPort:             pointer.ToFloat64(8082),
+				ToPort:               pointer.ToFloat64(8082),
+				StringRepresentation: &ingressRuleName,
+			},
+		),
+		&ingressRuleName,
+		nil,
+	)
+	securityGroup.AddIngressRule(
+		securityGroup,
+		awsec2.Port_AllTraffic(),
+		&ingressRuleName,
+		nil,
+	)
+
+	return securityGroup
 }
