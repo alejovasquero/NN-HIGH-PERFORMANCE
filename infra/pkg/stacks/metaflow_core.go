@@ -7,7 +7,6 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsecs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awselasticloadbalancingv2"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsrds"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
@@ -115,16 +114,7 @@ func mainService(
 }
 
 func mainTaskDefinition(stack awscdk.Stack, input MetaflowMetadataTaskDefinitionInput) awsecs.TaskDefinition {
-	executionRole := awsiam.NewRole(
-		stack,
-		pointer.ToString("ECS Role"),
-		&awsiam.RoleProps{
-			AssumedBy: awsiam.NewServicePrincipal(pointer.ToString("ecs-tasks.amazonaws.com"), nil),
-			Path:      pointer.ToString("/"),
-			RoleName:  awscdk.PhysicalName_GENERATE_IF_NEEDED(),
-		},
-	)
-
+	executionRole := commons.CreateECSExecutionRole(stack, "ECS Service Role")
 	task := awsecs.NewTaskDefinition(
 		stack,
 		pointer.ToString("Definition of main metaflow service"),
@@ -147,23 +137,8 @@ func mainTaskDefinition(stack awscdk.Stack, input MetaflowMetadataTaskDefinition
 			RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
 		},
 	)
+
 	containerLogGroup.GrantWrite(executionRole)
-	executionRole.AddToPolicy(
-		awsiam.NewPolicyStatement(
-			&awsiam.PolicyStatementProps{
-				Effect: awsiam.Effect_ALLOW,
-				Actions: &[]*string{
-					pointer.ToString("ecr:GetAuthorizationToken"),
-					pointer.ToString("ecr:BatchCheckLayerAvailability"),
-					pointer.ToString("ecr:GetDownloadUrlForLayer"),
-					pointer.ToString("ecr:BatchGetImage"),
-				},
-				Resources: &[]*string{
-					pointer.ToString("*"),
-				},
-			},
-		),
-	)
 
 	task.AddContainer(
 		pointer.ToString("Metaflow execution container"),
@@ -178,7 +153,7 @@ func mainTaskDefinition(stack awscdk.Stack, input MetaflowMetadataTaskDefinition
 			Cpu:            pointer.ToFloat64(512),
 			MemoryLimitMiB: pointer.ToFloat64(1024),
 			Image: awsecs.AssetImage_FromRegistry(
-				pointer.ToString("netflixoss/metaflow_metadata_service:v2.4.12"),
+				pointer.ToString(commons.MetaflowMetadataImage),
 				nil,
 			),
 			PortMappings: &[]*awsecs.PortMapping{

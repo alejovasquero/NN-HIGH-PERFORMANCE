@@ -24,6 +24,9 @@ func initStacks() commons.Account {
 		fx.Provide(stacks.BuildMetaflowMetadataStack),
 		fx.Provide(stacks.TaskDefinitionsStack),
 		fx.Provide(stacks.BuildPersistenceStack),
+		fx.Provide(stacks.BuildClusterStack),
+		fx.Provide(stacks.BuildUIStack),
+		fx.Provide(stacks.BuildIAMStack),
 		fx.Invoke(func(input StacksInput) int {
 			input.Shuwdownser.Shutdown()
 			return 0
