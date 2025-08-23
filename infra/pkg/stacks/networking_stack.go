@@ -26,6 +26,7 @@ type MetaflowNetworkingOutput struct {
 	SubnetB              awsec2.CfnSubnet               `name:"metaflow_subnet_b"`
 	FargateSecurityGroup awsec2.SecurityGroup           `name:"fargate_security_group"`
 	DBSecurityGroup      awsec2.SecurityGroup           `name:"db_security_group"`
+	UISecurityGroup      awsec2.SecurityGroup           `name:"ui_security_group"`
 }
 
 func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetworkingOutput {
@@ -64,6 +65,8 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 
 	dbSecurityGroup := dbSecurityGroup(nested_stack, vpc, fargateSecurityGroup)
 
+	uiSecurityGroup := uiSecurityGroup(nested_stack, vpc)
+
 	return MetaflowNetworkingOutput{
 		Stack:                nested_stack,
 		VPC:                  vpc,
@@ -75,6 +78,7 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 		SubnetB:              subnetB,
 		FargateSecurityGroup: fargateSecurityGroup,
 		DBSecurityGroup:      dbSecurityGroup,
+		UISecurityGroup:      uiSecurityGroup,
 	}
 }
 
@@ -286,4 +290,30 @@ func fargateSecurityGroup(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.SecurityGro
 	)
 
 	return securityGroup
+}
+
+func uiSecurityGroup(construct constructs.Construct, vpc awsec2.Vpc) awsec2.SecurityGroup {
+	uiSecurityGroup := awsec2.NewSecurityGroup(
+		construct,
+		pointer.ToString("LoadBalancerSecurityGroupUI"),
+		&awsec2.SecurityGroupProps{
+			Vpc: vpc,
+		},
+	)
+
+	uiSecurityGroup.AddIngressRule(
+		awsec2.Peer_Ipv4(pointer.ToString("0.0.0.0/0")),
+		awsec2.NewPort(
+			&awsec2.PortProps{
+				FromPort:             pointer.ToFloat64(443),
+				ToPort:               pointer.ToFloat64(443),
+				Protocol:             awsec2.Protocol_TCP,
+				StringRepresentation: pointer.ToString("InternetAccess"),
+			},
+		),
+		pointer.ToString("Allow access to UI from internet"),
+		nil,
+	)
+
+	return uiSecurityGroup
 }
