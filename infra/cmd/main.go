@@ -27,6 +27,7 @@ func initStacks() commons.Account {
 		fx.Provide(stacks.BuildClusterStack),
 		fx.Provide(stacks.BuildUIStack),
 		fx.Provide(stacks.BuildIAMStack),
+		fx.Provide(stacks.BuildApiStack),
 		fx.Invoke(func(input StacksInput) int {
 			input.Shuwdownser.Shutdown()
 			return 0

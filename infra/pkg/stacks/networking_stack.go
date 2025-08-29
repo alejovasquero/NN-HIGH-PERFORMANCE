@@ -323,6 +323,20 @@ func uiSecurityGroup(construct constructs.Construct, vpc awsec2.Vpc, fargateSecu
 		nil,
 	)
 
+	uiSecurityGroup.AddIngressRule(
+		awsec2.Peer_Ipv4(pointer.ToString("0.0.0.0/0")),
+		awsec2.NewPort(
+			&awsec2.PortProps{
+				FromPort:             pointer.ToFloat64(8082),
+				ToPort:               pointer.ToFloat64(8082),
+				Protocol:             awsec2.Protocol_TCP,
+				StringRepresentation: pointer.ToString("InternetAccess"),
+			},
+		),
+		pointer.ToString("Allow access to UI from internet"),
+		nil,
+	)
+
 	fargateSecurityGroup.AddIngressRule(
 		uiSecurityGroup,
 		awsec2.Port_AllTraffic(),

@@ -45,7 +45,10 @@ func apiGateway(construct constructs.Construct, input ApiStackInput) awsapigatew
 	api := awsapigateway.NewRestApi(
 		construct,
 		pointer.ToString("ApiGateway"),
-		nil,
+		&awsapigateway.RestApiProps{
+			CloudWatchRole:              pointer.ToBool(true),
+			CloudWatchRoleRemovalPolicy: awscdk.RemovalPolicy_DESTROY,
+		},
 	)
 
 	root := api.Root()
@@ -147,10 +150,10 @@ func apiGateway(construct constructs.Construct, input ApiStackInput) awsapigatew
 }
 
 func vpcLink(construct constructs.Construct, input ApiStackInput) awsapigateway.VpcLink {
-	networkLoadBalancer := awselasticloadbalancingv2.NetworkLoadBalancer_FromLookup(
+	networkLoadBalancer := awselasticloadbalancingv2.NetworkLoadBalancer_FromNetworkLoadBalancerAttributes(
 		construct,
 		pointer.ToString("NetworkLoadBalancer"),
-		&awselasticloadbalancingv2.NetworkLoadBalancerLookupOptions{
+		&awselasticloadbalancingv2.NetworkLoadBalancerAttributes{
 			LoadBalancerArn: input.LoadBalancer.AttrLoadBalancerArn(),
 		},
 	)
