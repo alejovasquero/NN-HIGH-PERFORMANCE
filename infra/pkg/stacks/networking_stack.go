@@ -313,8 +313,8 @@ func uiSecurityGroup(construct constructs.Construct, vpc awsec2.Vpc, fargateSecu
 		awsec2.Peer_Ipv4(pointer.ToString("0.0.0.0/0")),
 		awsec2.NewPort(
 			&awsec2.PortProps{
-				FromPort:             pointer.ToFloat64(80),
-				ToPort:               pointer.ToFloat64(80),
+				FromPort:             pointer.ToFloat64(443),
+				ToPort:               pointer.ToFloat64(443),
 				Protocol:             awsec2.Protocol_TCP,
 				StringRepresentation: pointer.ToString("InternetAccess"),
 			},

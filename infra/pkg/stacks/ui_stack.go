@@ -2,6 +2,7 @@ package stacks
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/AlekSi/pointer"
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
@@ -9,6 +10,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsecs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awselasticloadbalancingv2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsrds"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
@@ -232,11 +234,23 @@ func uiStaticService(
 		},
 	)
 
+	certificatePrivateKey, _ := os.ReadFile("my-private-key.pem")
+	certificateBody, _ := os.ReadFile("my-certificate.pem")
+
+	IAMcertificate := awsiam.NewCfnServerCertificate(
+		construct,
+		pointer.ToString("IAM Certificate"),
+		&awsiam.CfnServerCertificateProps{
+			CertificateBody: pointer.ToString(string(certificateBody)),
+			PrivateKey:      pointer.ToString(string(certificatePrivateKey)),
+		},
+	)
+
 	listener := awselasticloadbalancingv2.NewCfnListener(
 		construct,
 		pointer.ToString("ALB Listener ui"),
 		&awselasticloadbalancingv2.CfnListenerProps{
-			Port: pointer.ToFloat64(80),
+			Port: pointer.ToFloat64(443),
 			DefaultActions: &[]*awselasticloadbalancingv2.CfnListener_ActionProperty{
 				{
 					Type:           pointer.ToString("forward"),
@@ -244,10 +258,14 @@ func uiStaticService(
 					Order:          pointer.ToFloat64(1),
 				},
 			},
-			Protocol:        pointer.ToString("HTTP"),
+			Protocol: pointer.ToString("HTTPS"),
+			Certificates: &[]awselasticloadbalancingv2.IListenerCertificate{
+				awselasticloadbalancingv2.ListenerCertificate_FromArn(IAMcertificate.AttrArn()),
+			},
 			LoadBalancerArn: loadBalancer.AttrLoadBalancerArn(),
 		},
 	)
+	listener.AddDependency(IAMcertificate)
 
 	service := awsecs.NewCfnService(
 		construct,
