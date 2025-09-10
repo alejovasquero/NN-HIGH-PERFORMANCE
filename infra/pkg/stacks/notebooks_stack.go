@@ -1,0 +1,277 @@
+package stacks
+
+import (
+	"github.com/AlekSi/pointer"
+	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
+	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awssagemaker"
+	"github.com/aws/constructs-go/constructs/v10"
+
+	"go.uber.org/fx"
+)
+
+type NotebookStackInput struct {
+	fx.In
+	Account commons.Account
+	SubnetA awsec2.CfnSubnet `name:"metaflow_subnet_a"`
+	VPC     awsec2.Vpc       `name:"metaflow_vpc"`
+}
+
+type NotebookStackOutput struct {
+	fx.Out
+	Stack                  awscdk.Stack                     `group:"stacks"`
+	NotebookInstance       awssagemaker.CfnNotebookInstance `name:"sagemaker_notebook_instance"`
+	SageMakerExecutionRole awsiam.Role                      `name:"sagemaker_execution_role"`
+	SageMakerSecurityGroup awsec2.SecurityGroup             `name:"sagemaker_security_group"`
+}
+
+func BuildNotebooksStack(in NotebookStackInput) NotebookStackOutput {
+	stack := awscdk.NewStack(
+		in.Account.App,
+		pointer.ToString("NotebookStack"),
+		&awscdk.StackProps{
+			Env: in.Account.Env(),
+		},
+	)
+
+	notebookExecutionRole := buildSageMakerExecutionRole(stack)
+	securityGroup := buildSageMakerSecurityGroup(stack, in)
+
+	notebookinstance := buildSageMakerInstance(stack, in, notebookExecutionRole, securityGroup)
+
+	out := NotebookStackOutput{
+		Stack:                  stack,
+		NotebookInstance:       notebookinstance,
+		SageMakerExecutionRole: notebookExecutionRole,
+		SageMakerSecurityGroup: securityGroup,
+	}
+
+	return out
+}
+
+func buildSageMakerInstance(scope constructs.Construct, input NotebookStackInput, executionRole awsiam.Role, securityGroup awsec2.SecurityGroup) awssagemaker.CfnNotebookInstance {
+	notebookInstance := awssagemaker.NewCfnNotebookInstance(
+		scope,
+		pointer.ToString("NoteBookInstance"),
+		&awssagemaker.CfnNotebookInstanceProps{
+			NotebookInstanceName: pointer.ToString("NotebookNNHighPerformance"),
+			InstanceType:         pointer.ToString("ml.t2.xlarge"),
+			RoleArn:              executionRole.RoleArn(),
+			LifecycleConfigName:  nil,
+			SecurityGroupIds: &[]*string{
+				securityGroup.SecurityGroupId(),
+			},
+			SubnetId: input.SubnetA.AttrSubnetId(),
+		},
+	)
+
+	return notebookInstance
+}
+
+func buildSageMakerExecutionRole(scope constructs.Construct) awsiam.Role {
+	executionRole := awsiam.NewRole(
+		scope,
+		pointer.ToString("SageMakerExecutionRole"),
+		&awsiam.RoleProps{
+			AssumedBy: awsiam.NewServicePrincipal(
+				pointer.ToString("sagemaker.amazonaws.com"),
+				nil,
+			),
+			Path:     pointer.ToString("/"),
+			RoleName: awscdk.PhysicalName_GENERATE_IF_NEEDED(),
+		},
+	)
+
+	executionRole.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Effect: awsiam.Effect_ALLOW,
+				Sid:    pointer.ToString("AllowPassRole"),
+				Actions: &[]*string{
+					pointer.ToString("iam:PassRole"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+				Conditions: &map[string]interface{}{
+					"StringEquals": map[string]*string{
+						"iam:PassedToService": pointer.ToString("sagemaker.amazonaws.com"),
+					},
+				},
+			},
+		),
+	)
+
+	executionRole.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Sid:    pointer.ToString("MiscPermissions"),
+				Effect: awsiam.Effect_ALLOW,
+				Actions: &[]*string{
+					pointer.ToString("cloudwatch:PutMetricData"),
+					pointer.ToString("ecr:GetDownloadUrlForLayer"),
+					pointer.ToString("ecr:BatchGetImage"),
+					pointer.ToString("ecr:GetAuthorizationToken"),
+					pointer.ToString("ecr:BatchCheckLayerAvailability"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+			},
+		),
+	)
+
+	executionRole.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Sid:    pointer.ToString("MiscPermissions"),
+				Effect: awsiam.Effect_ALLOW,
+				Actions: &[]*string{
+					pointer.ToString("cloudwatch:PutMetricData"),
+					pointer.ToString("ecr:GetDownloadUrlForLayer"),
+					pointer.ToString("ecr:BatchGetImage"),
+					pointer.ToString("ecr:GetAuthorizationToken"),
+					pointer.ToString("ecr:BatchCheckLayerAvailability"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+			},
+		),
+	)
+
+	executionRole.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Sid: pointer.ToString("CreateLogStream"),
+				Actions: &[]*string{
+					pointer.ToString("logs:CreateLogStream"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+				Effect: awsiam.Effect_ALLOW,
+			},
+		),
+	)
+
+	executionRole.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Sid: pointer.ToString("LogEvents"),
+				Actions: &[]*string{
+					pointer.ToString("logs:PutLogEvents"),
+					pointer.ToString("logs:GetLogEvents"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+				Effect: awsiam.Effect_ALLOW,
+			},
+		),
+	)
+
+	executionRole.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Sid: pointer.ToString("LogGroup"),
+				Actions: &[]*string{
+					pointer.ToString("logs:DescribeLogGroups"),
+					pointer.ToString("logs:DescribeLogStreams"),
+					pointer.ToString("logs:CreateLogGroup"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+				Effect: awsiam.Effect_ALLOW,
+			},
+		),
+	)
+
+	executionRole.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Sid: pointer.ToString("SageMakerNotebook"),
+				Actions: &[]*string{
+					pointer.ToString("sagemaker:DescribeNotebook*"),
+					pointer.ToString("sagemaker:StartNotebookInstance*"),
+					pointer.ToString("sagemaker:StopNotebookInstance*"),
+					pointer.ToString("sagemaker:UpdateNotebookInstance*"),
+					pointer.ToString("sagemaker:CreatePresignedNotebookInstanceUrl*"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+				Effect: awsiam.Effect_ALLOW,
+			},
+		),
+	)
+
+	executionRole.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Sid: pointer.ToString("BucketAccess"),
+				Actions: &[]*string{
+					pointer.ToString("s3:ListBucket"),
+					pointer.ToString("s3:PutObject"),
+					pointer.ToString("s3:GetObject"),
+					pointer.ToString("s3:DeleteObject"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+				Effect: awsiam.Effect_ALLOW,
+			},
+		),
+	)
+
+	executionRole.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Sid: pointer.ToString("DenyPresigned"),
+				Actions: &[]*string{
+					pointer.ToString("s3:*"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+				Effect: awsiam.Effect_DENY,
+				Conditions: &map[string]interface{}{
+					"StringNotEquals": map[string]*string{
+						"s3:authType": pointer.ToString("REST-HEADER"),
+					},
+				},
+			},
+		),
+	)
+
+	return executionRole
+}
+
+func buildSageMakerSecurityGroup(scope constructs.Construct, input NotebookStackInput) awsec2.SecurityGroup {
+	group := awsec2.NewSecurityGroup(
+		scope,
+		pointer.ToString("SageMakerSecurityGroup"),
+		&awsec2.SecurityGroupProps{
+			Description: pointer.ToString("Security group for sagemaker"),
+			Vpc:         input.VPC,
+		},
+	)
+
+	group.AddIngressRule(
+		awsec2.Peer_Ipv4(pointer.ToString("0.0.0.0/0")),
+		awsec2.NewPort(
+			&awsec2.PortProps{
+				Protocol: awsec2.Protocol_TCP,
+				FromPort: pointer.ToFloat64(8080),
+				ToPort:   pointer.ToFloat64(8080),
+			},
+		),
+		pointer.ToString("Allow internet access in 8080"),
+		nil,
+	)
+
+	return group
+}

@@ -4,6 +4,7 @@ import (
 	"github.com/AlekSi/pointer"
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsdynamodb"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsrds"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
@@ -23,10 +24,11 @@ type PersistenceStackInput struct {
 
 type PersistenceStackOutput struct {
 	fx.Out
-	Construct   constructs.Construct     `group:"stacks"`
-	DB          awsrds.CfnDBInstance     `name:"DB"`
-	Credentials awssecretsmanager.Secret `name:"db_credentials"`
-	Bucket      awss3.Bucket             `name:"s3_bucket"`
+	Construct   constructs.Construct       `group:"stacks"`
+	DB          awsrds.CfnDBInstance       `name:"DB"`
+	Credentials awssecretsmanager.Secret   `name:"db_credentials"`
+	Bucket      awss3.Bucket               `name:"s3_bucket"`
+	StateDDB    awsdynamodb.CfnGlobalTable `name:"state_ddb"`
 }
 
 func BuildPersistenceStack(in PersistenceStackInput) PersistenceStackOutput {
@@ -43,12 +45,14 @@ func BuildPersistenceStack(in PersistenceStackInput) PersistenceStackOutput {
 	db := dbInstance(stack, dbCredentials, subnetGroup, in)
 	_ = credentialsAttachmentToDB(stack, db, dbCredentials)
 	bucket := bucket(stack)
+	ddb := graphStateDB(stack)
 
 	return PersistenceStackOutput{
 		Construct:   stack,
 		DB:          db,
 		Credentials: dbCredentials,
 		Bucket:      bucket,
+		StateDDB:    ddb,
 	}
 }
 
@@ -146,4 +150,31 @@ func bucket(scope constructs.Construct) awss3.Bucket {
 	bucket.ApplyRemovalPolicy(awscdk.RemovalPolicy_DESTROY)
 
 	return bucket
+}
+
+func graphStateDB(scope constructs.Construct) awsdynamodb.CfnGlobalTable {
+	table := awsdynamodb.NewCfnGlobalTable(
+		scope,
+		pointer.ToString("StepFunctionsStateDDB"),
+		&awsdynamodb.CfnGlobalTableProps{
+			BillingMode: pointer.ToString("PAY_PER_REQUEST"),
+			AttributeDefinitions: []interface{}{
+				awsdynamodb.CfnGlobalTable_AttributeDefinitionProperty{
+					AttributeName: pointer.ToString("pathspec"),
+					AttributeType: pointer.ToString("S"),
+				},
+			},
+			KeySchema: []interface{}{
+				awsdynamodb.CfnGlobalTable_KeySchemaProperty{
+					AttributeName: pointer.ToString("pathspec"),
+					KeyType:       pointer.ToString("HASH"),
+				},
+			},
+			TimeToLiveSpecification: awsdynamodb.CfnGlobalTable_TimeToLiveSpecificationProperty{
+				AttributeName: pointer.ToString("ttl"),
+				Enabled:       pointer.ToBool(true),
+			},
+		},
+	)
+	return table
 }
