@@ -1,19 +1,19 @@
 package commons
 
 import (
-	"github.com/AlekSi/pointer"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 )
 
 type Account struct {
 	App       awscdk.App
 	AccountId string
+	Region    string
 }
 
 func (a *Account) Env() *awscdk.Environment {
 	return &awscdk.Environment{
 		Account: &a.AccountId,
-		Region:  pointer.ToString("us-east-2"),
+		Region:  &a.Region,
 	}
 }
 

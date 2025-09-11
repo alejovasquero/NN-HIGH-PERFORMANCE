@@ -1,11 +1,15 @@
 package stacks
 
 import (
+	"fmt"
+
 	"github.com/AlekSi/pointer"
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awselasticloadbalancingv2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssagemaker"
 	"github.com/aws/constructs-go/constructs/v10"
 
@@ -14,9 +18,11 @@ import (
 
 type NotebookStackInput struct {
 	fx.In
-	Account commons.Account
-	SubnetA awsec2.CfnSubnet `name:"metaflow_subnet_a"`
-	VPC     awsec2.Vpc       `name:"metaflow_vpc"`
+	Account      commons.Account
+	SubnetA      awsec2.CfnSubnet                          `name:"metaflow_subnet_a"`
+	VPC          awsec2.Vpc                                `name:"metaflow_vpc"`
+	LoadBalancer awselasticloadbalancingv2.CfnLoadBalancer `name:"network_load_balancer"`
+	Bucket       awss3.Bucket                              `name:"s3_bucket"`
 }
 
 type NotebookStackOutput struct {
@@ -38,8 +44,9 @@ func BuildNotebooksStack(in NotebookStackInput) NotebookStackOutput {
 
 	notebookExecutionRole := buildSageMakerExecutionRole(stack)
 	securityGroup := buildSageMakerSecurityGroup(stack, in)
+	notebookLifecycleConfig := buildNotebookLyfecycle(stack, in)
 
-	notebookinstance := buildSageMakerInstance(stack, in, notebookExecutionRole, securityGroup)
+	notebookinstance := buildSageMakerInstance(stack, in, notebookExecutionRole, securityGroup, notebookLifecycleConfig)
 
 	out := NotebookStackOutput{
 		Stack:                  stack,
@@ -51,7 +58,7 @@ func BuildNotebooksStack(in NotebookStackInput) NotebookStackOutput {
 	return out
 }
 
-func buildSageMakerInstance(scope constructs.Construct, input NotebookStackInput, executionRole awsiam.Role, securityGroup awsec2.SecurityGroup) awssagemaker.CfnNotebookInstance {
+func buildSageMakerInstance(scope constructs.Construct, input NotebookStackInput, executionRole awsiam.Role, securityGroup awsec2.SecurityGroup, lifecycleConfig awssagemaker.CfnNotebookInstanceLifecycleConfig) awssagemaker.CfnNotebookInstance {
 	notebookInstance := awssagemaker.NewCfnNotebookInstance(
 		scope,
 		pointer.ToString("NoteBookInstance"),
@@ -59,7 +66,7 @@ func buildSageMakerInstance(scope constructs.Construct, input NotebookStackInput
 			NotebookInstanceName: pointer.ToString("NotebookNNHighPerformance"),
 			InstanceType:         pointer.ToString("ml.t2.xlarge"),
 			RoleArn:              executionRole.RoleArn(),
-			LifecycleConfigName:  nil,
+			LifecycleConfigName:  lifecycleConfig.AttrNotebookInstanceLifecycleConfigName(),
 			SecurityGroupIds: &[]*string{
 				securityGroup.SecurityGroupId(),
 			},
@@ -68,6 +75,47 @@ func buildSageMakerInstance(scope constructs.Construct, input NotebookStackInput
 	)
 
 	return notebookInstance
+}
+
+func buildNotebookLyfecycle(scope constructs.Construct, input NotebookStackInput) awssagemaker.CfnNotebookInstanceLifecycleConfig {
+	config := awssagemaker.NewCfnNotebookInstanceLifecycleConfig(
+		scope,
+		pointer.ToString("NotebookLifeCycle"),
+		&awssagemaker.CfnNotebookInstanceLifecycleConfigProps{
+			OnCreate: &[]interface{}{
+				awssagemaker.CfnNotebookInstanceLifecycleConfig_NotebookInstanceLifecycleHookProperty{
+					Content: pointer.ToString(
+						fmt.Sprintf(
+							`
+#!/bin/bash
+echo 'export METAFLOW_DATASTORE_SYSROOT_S3=s3://%[1]s/metaflow/' >> /etc/profile.d/jupyter-env.sh
+echo 'export METAFLOW_DATATOOLS_S3ROOT=s3://%[1]s/data/' >> /etc/profile.d/jupyter-env.sh
+echo 'export METAFLOW_SERVICE_URL=http://%[2]s/' >> /etc/profile.d/jupyter-env.sh
+echo 'export AWS_DEFAULT_REGION=%[3]s' >> /etc/profile.d/jupyter-env.sh
+echo 'export METAFLOW_DEFAULT_DATASTORE=s3' >> /etc/profile.d/jupyter-env.sh
+echo 'export METAFLOW_DEFAULT_METADATA=service' >> /etc/profile.d/jupyter-env.sh
+systemctl restart jupyter-server
+						`, *input.Bucket.BucketName(), *input.LoadBalancer.AttrDnsName(), input.Account.AccountId),
+					),
+				},
+			},
+			OnStart: &[]any{
+				&awssagemaker.CfnNotebookInstanceLifecycleConfig_NotebookInstanceLifecycleHookProperty{
+					Content: pointer.ToString(
+						`
+#!/bin/bash
+set -e
+sudo -u ec2-user -i <<'EOF'
+echo "THIS IS A PLACE HOLDER TO EXECUTE - USER LEVEL" >> ~/.customrc
+EOF
+							`,
+					),
+				},
+			},
+		},
+	)
+
+	return config
 }
 
 func buildSageMakerExecutionRole(scope constructs.Construct) awsiam.Role {
@@ -264,9 +312,10 @@ func buildSageMakerSecurityGroup(scope constructs.Construct, input NotebookStack
 		awsec2.Peer_Ipv4(pointer.ToString("0.0.0.0/0")),
 		awsec2.NewPort(
 			&awsec2.PortProps{
-				Protocol: awsec2.Protocol_TCP,
-				FromPort: pointer.ToFloat64(8080),
-				ToPort:   pointer.ToFloat64(8080),
+				Protocol:             awsec2.Protocol_TCP,
+				FromPort:             pointer.ToFloat64(8080),
+				ToPort:               pointer.ToFloat64(8080),
+				StringRepresentation: pointer.ToString("Internet Access"),
 			},
 		),
 		pointer.ToString("Allow internet access in 8080"),

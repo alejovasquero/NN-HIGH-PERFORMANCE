@@ -158,7 +158,7 @@ func graphStateDB(scope constructs.Construct) awsdynamodb.CfnGlobalTable {
 		pointer.ToString("StepFunctionsStateDDB"),
 		&awsdynamodb.CfnGlobalTableProps{
 			BillingMode: pointer.ToString("PAY_PER_REQUEST"),
-			AttributeDefinitions: []interface{}{
+			AttributeDefinitions: []any{
 				awsdynamodb.CfnGlobalTable_AttributeDefinitionProperty{
 					AttributeName: pointer.ToString("pathspec"),
 					AttributeType: pointer.ToString("S"),
@@ -173,6 +173,11 @@ func graphStateDB(scope constructs.Construct) awsdynamodb.CfnGlobalTable {
 			TimeToLiveSpecification: awsdynamodb.CfnGlobalTable_TimeToLiveSpecificationProperty{
 				AttributeName: pointer.ToString("ttl"),
 				Enabled:       pointer.ToBool(true),
+			},
+			Replicas: []any{
+				awsdynamodb.CfnGlobalTable_ReplicaSpecificationProperty{
+					Region: pointer.ToString("us-east-2"),
+				},
 			},
 		},
 	)

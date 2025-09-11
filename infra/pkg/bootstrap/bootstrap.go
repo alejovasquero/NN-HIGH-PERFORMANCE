@@ -11,5 +11,6 @@ func MainAccount() commons.Account {
 	return commons.Account{
 		App:       app,
 		AccountId: "450119683363",
+		Region:    "us-east-2",
 	}
 }
