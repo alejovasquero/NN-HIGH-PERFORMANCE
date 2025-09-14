@@ -3,6 +3,8 @@ package stacks
 import (
 	"fmt"
 
+	"encoding/base64"
+
 	"github.com/AlekSi/pointer"
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -64,7 +66,7 @@ func buildSageMakerInstance(scope constructs.Construct, input NotebookStackInput
 		pointer.ToString("NoteBookInstance"),
 		&awssagemaker.CfnNotebookInstanceProps{
 			NotebookInstanceName: pointer.ToString("NotebookNNHighPerformance"),
-			InstanceType:         pointer.ToString("ml.t2.xlarge"),
+			InstanceType:         pointer.ToString("ml.t3.large"),
 			RoleArn:              executionRole.RoleArn(),
 			LifecycleConfigName:  lifecycleConfig.AttrNotebookInstanceLifecycleConfigName(),
 			SecurityGroupIds: &[]*string{
@@ -78,38 +80,36 @@ func buildSageMakerInstance(scope constructs.Construct, input NotebookStackInput
 }
 
 func buildNotebookLyfecycle(scope constructs.Construct, input NotebookStackInput) awssagemaker.CfnNotebookInstanceLifecycleConfig {
-	config := awssagemaker.NewCfnNotebookInstanceLifecycleConfig(
-		scope,
-		pointer.ToString("NotebookLifeCycle"),
-		&awssagemaker.CfnNotebookInstanceLifecycleConfigProps{
-			OnCreate: &[]interface{}{
-				awssagemaker.CfnNotebookInstanceLifecycleConfig_NotebookInstanceLifecycleHookProperty{
-					Content: pointer.ToString(
-						fmt.Sprintf(
-							`
-#!/bin/bash
+
+	createHook := fmt.Sprintf(
+		`#!/bin/bash
 echo 'export METAFLOW_DATASTORE_SYSROOT_S3=s3://%[1]s/metaflow/' >> /etc/profile.d/jupyter-env.sh
 echo 'export METAFLOW_DATATOOLS_S3ROOT=s3://%[1]s/data/' >> /etc/profile.d/jupyter-env.sh
 echo 'export METAFLOW_SERVICE_URL=http://%[2]s/' >> /etc/profile.d/jupyter-env.sh
 echo 'export AWS_DEFAULT_REGION=%[3]s' >> /etc/profile.d/jupyter-env.sh
 echo 'export METAFLOW_DEFAULT_DATASTORE=s3' >> /etc/profile.d/jupyter-env.sh
 echo 'export METAFLOW_DEFAULT_METADATA=service' >> /etc/profile.d/jupyter-env.sh
-systemctl restart jupyter-server
-						`, *input.Bucket.BucketName(), *input.LoadBalancer.AttrDnsName(), input.Account.AccountId),
-					),
+echo -e "Finished create script"
+systemctl restart jupyter-server`, *input.Bucket.BucketName(), *input.LoadBalancer.AttrDnsName(), input.Account.Region)
+
+	startHook := `#!/bin/bash
+set -e
+sudo -u ec2-user -i <<'EOF'
+echo "THIS IS A PLACE HOLDER TO EXECUTE - USER LEVEL" >> ~/.customrc
+EOF`
+
+	config := awssagemaker.NewCfnNotebookInstanceLifecycleConfig(
+		scope,
+		pointer.ToString("NotebookLifeCycle"),
+		&awssagemaker.CfnNotebookInstanceLifecycleConfigProps{
+			OnCreate: &[]interface{}{
+				awssagemaker.CfnNotebookInstanceLifecycleConfig_NotebookInstanceLifecycleHookProperty{
+					Content: awscdk.Fn_Base64(&createHook),
 				},
 			},
 			OnStart: &[]any{
 				&awssagemaker.CfnNotebookInstanceLifecycleConfig_NotebookInstanceLifecycleHookProperty{
-					Content: pointer.ToString(
-						`
-#!/bin/bash
-set -e
-sudo -u ec2-user -i <<'EOF'
-echo "THIS IS A PLACE HOLDER TO EXECUTE - USER LEVEL" >> ~/.customrc
-EOF
-							`,
-					),
+					Content: pointer.ToString(base64.StdEncoding.EncodeToString([]byte(startHook))),
 				},
 			},
 		},
