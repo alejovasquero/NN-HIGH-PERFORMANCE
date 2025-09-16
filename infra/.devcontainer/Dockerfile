@@ -6,7 +6,7 @@ ARG USER_NAME=arch
 
 RUN useradd -m ${USER_NAME} 
 
-RUN pacman -Sy --noconfirm git fzf openssh cmake unzip less
+RUN pacman -Sy --noconfirm git fzf openssh cmake unzip less python
 
 
 ENV NVM_DIR=/usr/local/nvm

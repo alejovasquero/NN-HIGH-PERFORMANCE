@@ -137,7 +137,7 @@ func buildMetaflowUserRole(construct constructs.Construct, input RolesStackInput
 					pointer.ToString("iam:PassRole"),
 				},
 				Resources: &[]*string{
-					pointer.ToString(fmt.Sprintf("arn:aws:iam:%[1]s:%[2]s:role/*", input.Account.Region, input.Account.AccountId)),
+					pointer.ToString(fmt.Sprintf("arn:aws:iam::%[1]s:role/*", input.Account.AccountId)),
 				},
 			},
 		),

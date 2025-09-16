@@ -227,7 +227,7 @@ func buildBatchExecutionRole(construct constructs.Construct) awsiam.Role {
 	role.AddToPolicy(
 		awsiam.NewPolicyStatement(
 			&awsiam.PolicyStatementProps{
-				Sid:    pointer.ToString("ec2_custom_policies"),
+				Sid:    pointer.ToString("ec2custompolicies"),
 				Effect: awsiam.Effect_ALLOW,
 				Actions: &[]*string{
 					pointer.ToString("ec2:CreateTags"),

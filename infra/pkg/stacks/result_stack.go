@@ -57,70 +57,80 @@ func BuildResultStack(in ResultStackInput) ResultStackOutput {
 	metaflowDataStoreURL := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_DATASTORE_SYSROOT_S3"),
 		&awscdk.CfnOutputProps{
-			Value: in.MetaflowBucket.ArnForObjects(pointer.ToString("metaflow")),
+			Value:       in.MetaflowBucket.UrlForObject(pointer.ToString("metaflow")),
+			Description: pointer.ToString("METAFLOW_DATASTORE_SYSROOT_S3"),
 		},
 	)
 
 	metaflowDataToolsURL := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_DATATOOLS_S3ROOT"),
 		&awscdk.CfnOutputProps{
-			Value: in.MetaflowBucket.ArnForObjects(pointer.ToString("data")),
+			Value:       in.MetaflowBucket.UrlForObject(pointer.ToString("data")),
+			Description: pointer.ToString("METAFLOW_DATATOOLS_S3ROOT"),
 		},
 	)
 
 	metaflowJobQueue := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_BATCH_JOB_QUEUE"),
 		&awscdk.CfnOutputProps{
-			Value: in.JobQueue.Ref(),
+			Value:       in.JobQueue.Ref(),
+			Description: pointer.ToString("METAFLOW_BATCH_JOB_QUEUE"),
 		},
 	)
 
 	serviceURL := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_SERVICE_URL"),
 		&awscdk.CfnOutputProps{
-			Value: in.ApiGateway.Url(),
+			Value:       pointer.ToString(fmt.Sprintf("https://%[1]s.execute-api.%[2]s.amazonaws.com/api/", *in.ApiGateway.RestApiId(), in.Account.Region)),
+			Description: pointer.ToString("METAFLOW_SERVICE_URL"),
 		},
 	)
 
 	roleForJobs := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_ECS_S3_ACCESS_IAM_ROLE"),
 		&awscdk.CfnOutputProps{
-			Value: in.BatchS3Role.RoleArn(),
+			Value:       in.BatchS3Role.RoleArn(),
+			Description: pointer.ToString("METAFLOW_ECS_S3_ACCESS_IAM_ROLE"),
 		},
 	)
 
 	internalServiceURL := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_SERVICE_INTERNAL_URL"),
 		&awscdk.CfnOutputProps{
-			Value: in.LoadBalancer.AttrDnsName(),
+			Value:       pointer.ToString(fmt.Sprintf("https://%s/", *in.LoadBalancer.AttrDnsName())),
+			Description: pointer.ToString("METAFLOW_SERVICE_INTERNAL_URL"),
 		},
 	)
 
 	notebookURL := awscdk.NewCfnOutput(
 		stack, pointer.ToString("NOTEBOOKS_URL"),
 		&awscdk.CfnOutputProps{
-			Value: pointer.ToString(fmt.Sprintf("https://%s.notebook.%s.sagemaker.aws/tree", in.NotebookInstance.NotebookInstanceName, in.Account.Region)),
+			Value:       pointer.ToString(fmt.Sprintf("https://%s.notebook.%s.sagemaker.aws/tree", *in.NotebookInstance.NotebookInstanceName(), in.Account.Region)),
+			Description: pointer.ToString("NOTEBOOKS_URL"),
 		},
 	)
 
 	eventBridgeRole := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_EVENTS_SFN_ACCESS_IAM_ROLE"),
 		&awscdk.CfnOutputProps{
-			Value: in.EventBridgeRole.RoleArn(),
+			Value:       in.EventBridgeRole.RoleArn(),
+			Description: pointer.ToString("METAFLOW_EVENTS_SFN_ACCESS_IAM_ROLE"),
 		},
 	)
 
 	stepFunctionsRole := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_SFN_IAM_ROLE"),
 		&awscdk.CfnOutputProps{
-			Value: in.StepFunctionsRole.RoleArn(),
+			Value:       in.StepFunctionsRole.RoleArn(),
+			Description: pointer.ToString("METAFLOW_SFN_IAM_ROLE"),
 		},
 	)
 
 	stepFunctionsDDBARN := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_SFN_DYNAMO_DB_TABLE"),
 		&awscdk.CfnOutputProps{
-			Value: in.StateDDB.AttrArn(),
+			Value:       in.StateDDB.TableName(),
+			Description: pointer.ToString("METAFLOW_SFN_DYNAMO_DB_TABLE"),
 		},
 	)
 
