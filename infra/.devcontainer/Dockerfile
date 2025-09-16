@@ -6,7 +6,7 @@ ARG USER_NAME=arch
 
 RUN useradd -m ${USER_NAME} 
 
-RUN pacman -Sy --noconfirm git fzf openssh cmake unzip less python
+RUN pacman -Sy --noconfirm git fzf openssh cmake unzip less python python-pip
 
 
 ENV NVM_DIR=/usr/local/nvm
@@ -32,6 +32,7 @@ RUN git clone https://github.com/neovim/neovim --branch stable --depth 1 \
 
 ENV PATH="/usr/local/go/bin:$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH:${PATH}"
 ENV NODE_PATH $NVM_DIR/v$NODE_VERSION/lib/node_modules
+ENV USERNAME arch
 
 RUN node -v && npm -v
 RUN npm install -g aws-cdk

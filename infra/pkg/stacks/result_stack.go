@@ -57,7 +57,7 @@ func BuildResultStack(in ResultStackInput) ResultStackOutput {
 	metaflowDataStoreURL := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_DATASTORE_SYSROOT_S3"),
 		&awscdk.CfnOutputProps{
-			Value:       in.MetaflowBucket.UrlForObject(pointer.ToString("metaflow")),
+			Value:       pointer.ToString(fmt.Sprintf("s3://%s/metaflow", *in.MetaflowBucket.BucketName())),
 			Description: pointer.ToString("METAFLOW_DATASTORE_SYSROOT_S3"),
 		},
 	)
@@ -65,7 +65,7 @@ func BuildResultStack(in ResultStackInput) ResultStackOutput {
 	metaflowDataToolsURL := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_DATATOOLS_S3ROOT"),
 		&awscdk.CfnOutputProps{
-			Value:       in.MetaflowBucket.UrlForObject(pointer.ToString("data")),
+			Value:       pointer.ToString(fmt.Sprintf("s3://%s/data", *in.MetaflowBucket.BucketName())),
 			Description: pointer.ToString("METAFLOW_DATATOOLS_S3ROOT"),
 		},
 	)
