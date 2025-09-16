@@ -164,6 +164,7 @@ func graphStateDB(scope constructs.Construct) awsdynamodb.CfnGlobalTable {
 					AttributeType: pointer.ToString("S"),
 				},
 			},
+			TableName: pointer.ToString("MetaflowStepFunctionsState"),
 			KeySchema: []interface{}{
 				awsdynamodb.CfnGlobalTable_KeySchemaProperty{
 					AttributeName: pointer.ToString("pathspec"),

@@ -174,25 +174,6 @@ func buildSageMakerExecutionRole(scope constructs.Construct) awsiam.Role {
 	executionRole.AddToPolicy(
 		awsiam.NewPolicyStatement(
 			&awsiam.PolicyStatementProps{
-				Sid:    pointer.ToString("MiscPermissions"),
-				Effect: awsiam.Effect_ALLOW,
-				Actions: &[]*string{
-					pointer.ToString("cloudwatch:PutMetricData"),
-					pointer.ToString("ecr:GetDownloadUrlForLayer"),
-					pointer.ToString("ecr:BatchGetImage"),
-					pointer.ToString("ecr:GetAuthorizationToken"),
-					pointer.ToString("ecr:BatchCheckLayerAvailability"),
-				},
-				Resources: &[]*string{
-					pointer.ToString("*"),
-				},
-			},
-		),
-	)
-
-	executionRole.AddToPolicy(
-		awsiam.NewPolicyStatement(
-			&awsiam.PolicyStatementProps{
 				Sid: pointer.ToString("CreateLogStream"),
 				Actions: &[]*string{
 					pointer.ToString("logs:CreateLogStream"),
