@@ -244,5 +244,22 @@ func buildBatchExecutionRole(construct constructs.Construct) awsiam.Role {
 		),
 	)
 
+	role.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Effect: awsiam.Effect_ALLOW,
+				Actions: &[]*string{
+					pointer.ToString("ecr:GetAuthorizationToken"),
+					pointer.ToString("ecr:BatchCheckLayerAvailability"),
+					pointer.ToString("ecr:GetDownloadUrlForLayer"),
+					pointer.ToString("ecr:BatchGetImage"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+			},
+		),
+	)
+
 	return role
 }

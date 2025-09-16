@@ -60,24 +60,10 @@ func buildMetaflowUserRole(construct constructs.Construct, input RolesStackInput
 	role := awsiam.NewRole(
 		construct, pointer.ToString("MetaflowUserRole"),
 		&awsiam.RoleProps{
-			AssumedBy: awsiam.NewServicePrincipal(pointer.ToString("ec2.amazonaws.com"), nil),
+			AssumedBy: awsiam.NewArnPrincipal(ecsExecutionRole.RoleArn()),
 			RoleName:  pointer.ToString("MetaflowUserRole"),
 			Path:      pointer.ToString("/"),
 		})
-
-	role.AddToPolicy(
-		awsiam.NewPolicyStatement(
-			&awsiam.PolicyStatementProps{
-				Effect: awsiam.Effect_ALLOW,
-				Actions: &[]*string{
-					pointer.ToString("sts:AssumeRole"),
-				},
-				Resources: &[]*string{
-					ecsExecutionRole.RoleArn(),
-				},
-			},
-		),
-	)
 
 	role.AddToPolicy(
 		awsiam.NewPolicyStatement(
@@ -138,21 +124,6 @@ func buildMetaflowUserRole(construct constructs.Construct, input RolesStackInput
 				},
 				Resources: &[]*string{
 					pointer.ToString(fmt.Sprintf("arn:aws:iam::%[1]s:role/*", input.Account.AccountId)),
-				},
-			},
-		),
-	)
-
-	role.AddToPolicy(
-		awsiam.NewPolicyStatement(
-			&awsiam.PolicyStatementProps{
-				Effect: awsiam.Effect_ALLOW,
-				Actions: &[]*string{
-					pointer.ToString("kms:Decrypt"),
-					pointer.ToString("kms:Encrypt"),
-				},
-				Resources: &[]*string{
-					pointer.ToString(fmt.Sprintf("arn:aws:kms:%[1]s:%[2]s:key/", input.Account.Region, input.Account.AccountId)),
 				},
 			},
 		),

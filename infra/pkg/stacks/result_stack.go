@@ -18,31 +18,33 @@ import (
 
 type ResultStackInput struct {
 	fx.In
-	Account           commons.Account
-	MetaflowBucket    awss3.Bucket                              `name:"s3_bucket"`
-	JobQueue          awsbatch.CfnJobQueue                      `name:"batch_job_queue"`
-	ApiGateway        awsapigateway.RestApi                     `name:"api_gateway"`
-	BatchS3Role       awsiam.Role                               `name:"batch_s3_role"`
-	LoadBalancer      awselasticloadbalancingv2.CfnLoadBalancer `name:"network_load_balancer"`
-	NotebookInstance  awssagemaker.CfnNotebookInstance          `name:"sagemaker_notebook_instance"`
-	EventBridgeRole   awsiam.Role                               `name:"event_bridge_role"`
-	StepFunctionsRole awsiam.Role                               `name:"step_functions_role"`
-	StateDDB          awsdynamodb.CfnGlobalTable                `name:"state_ddb"`
+	Account            commons.Account
+	MetaflowBucket     awss3.Bucket                              `name:"s3_bucket"`
+	JobQueue           awsbatch.CfnJobQueue                      `name:"batch_job_queue"`
+	ApiGateway         awsapigateway.RestApi                     `name:"api_gateway"`
+	BatchS3Role        awsiam.Role                               `name:"batch_s3_role"`
+	BatchExecutionRole awsiam.Role                               `name:"batch_execution_role"`
+	LoadBalancer       awselasticloadbalancingv2.CfnLoadBalancer `name:"network_load_balancer"`
+	NotebookInstance   awssagemaker.CfnNotebookInstance          `name:"sagemaker_notebook_instance"`
+	EventBridgeRole    awsiam.Role                               `name:"event_bridge_role"`
+	StepFunctionsRole  awsiam.Role                               `name:"step_functions_role"`
+	StateDDB           awsdynamodb.CfnGlobalTable                `name:"state_ddb"`
 }
 
 type ResultStackOutput struct {
 	fx.Out
-	Stack                awscdk.Stack     `group:"stacks"`
-	MetaflowDataStoreURL awscdk.CfnOutput `name:"sysroot_s3"`
-	MetaflowDataToolsURL awscdk.CfnOutput `name:"datatools_s3"`
-	BatchJobQueue        awscdk.CfnOutput `name:"batch_job_queue_name"`
-	ServiceURL           awscdk.CfnOutput `name:"service_url"`
-	RoleForJobs          awscdk.CfnOutput `name:"role_for_jobs"`
-	InternalServiceURL   awscdk.CfnOutput `name:"internal_service_url"`
-	NotebooksURL         awscdk.CfnOutput `name:"notebooks_url"`
-	EventBridgeRoleARN   awscdk.CfnOutput `name:"event_bridge_role_arn"`
-	StepFunctionRoleARN  awscdk.CfnOutput `name:"step_functions_role_arn"`
-	StepFunctionsDDBARN  awscdk.CfnOutput `name:"step_functions_ddb_arn"`
+	Stack                 awscdk.Stack     `group:"stacks"`
+	MetaflowDataStoreURL  awscdk.CfnOutput `name:"sysroot_s3"`
+	MetaflowDataToolsURL  awscdk.CfnOutput `name:"datatools_s3"`
+	BatchJobQueue         awscdk.CfnOutput `name:"batch_job_queue_name"`
+	ServiceURL            awscdk.CfnOutput `name:"service_url"`
+	RoleForJobs           awscdk.CfnOutput `name:"role_for_jobs"`
+	InternalServiceURL    awscdk.CfnOutput `name:"internal_service_url"`
+	NotebooksURL          awscdk.CfnOutput `name:"notebooks_url"`
+	EventBridgeRoleARN    awscdk.CfnOutput `name:"event_bridge_role_arn"`
+	StepFunctionRoleARN   awscdk.CfnOutput `name:"step_functions_role_arn"`
+	StepFunctionsDDBARN   awscdk.CfnOutput `name:"step_functions_ddb_arn"`
+	BatchExecutionRoleARN awscdk.CfnOutput `name:"batch_execution_role_arn"`
 }
 
 func BuildResultStack(in ResultStackInput) ResultStackOutput {
@@ -134,18 +136,27 @@ func BuildResultStack(in ResultStackInput) ResultStackOutput {
 		},
 	)
 
+	batchExecutionRole := awscdk.NewCfnOutput(
+		stack, pointer.ToString("METAFLOW_ECS_FARGATE_EXECUTION_ROLE"),
+		&awscdk.CfnOutputProps{
+			Value:       in.BatchExecutionRole.RoleArn(),
+			Description: pointer.ToString("METAFLOW_ECS_FARGATE_EXECUTION_ROLE"),
+		},
+	)
+
 	out := ResultStackOutput{
-		Stack:                stack,
-		MetaflowDataStoreURL: metaflowDataStoreURL,
-		MetaflowDataToolsURL: metaflowDataToolsURL,
-		BatchJobQueue:        metaflowJobQueue,
-		ServiceURL:           serviceURL,
-		RoleForJobs:          roleForJobs,
-		InternalServiceURL:   internalServiceURL,
-		NotebooksURL:         notebookURL,
-		EventBridgeRoleARN:   eventBridgeRole,
-		StepFunctionRoleARN:  stepFunctionsRole,
-		StepFunctionsDDBARN:  stepFunctionsDDBARN,
+		Stack:                 stack,
+		MetaflowDataStoreURL:  metaflowDataStoreURL,
+		MetaflowDataToolsURL:  metaflowDataToolsURL,
+		BatchJobQueue:         metaflowJobQueue,
+		ServiceURL:            serviceURL,
+		RoleForJobs:           roleForJobs,
+		InternalServiceURL:    internalServiceURL,
+		NotebooksURL:          notebookURL,
+		EventBridgeRoleARN:    eventBridgeRole,
+		StepFunctionRoleARN:   stepFunctionsRole,
+		StepFunctionsDDBARN:   stepFunctionsDDBARN,
+		BatchExecutionRoleARN: batchExecutionRole,
 	}
 
 	return out
