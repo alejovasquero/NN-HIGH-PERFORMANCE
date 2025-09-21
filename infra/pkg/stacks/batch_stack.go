@@ -98,10 +98,15 @@ func buildBatchExecutionRole(construct constructs.Construct) awsiam.Role {
 	role := awsiam.NewRole(
 		construct, pointer.ToString("BatchExecutionRole"),
 		&awsiam.RoleProps{
-			AssumedBy: awsiam.NewServicePrincipal(pointer.ToString("batch.amazonaws.com"), nil),
-			RoleName:  pointer.ToString("BatchExecutionRole"),
+			AssumedBy: awsiam.NewCompositePrincipal(
+				awsiam.NewServicePrincipal(pointer.ToString("ecs-tasks.amazonaws.com"), nil),
+				awsiam.NewServicePrincipal(pointer.ToString("batch.amazonaws.com"), nil),
+			),
+			RoleName: pointer.ToString("BatchExecutionRole"),
 		},
 	)
+
+	role.ApplyRemovalPolicy(awscdk.RemovalPolicy_DESTROY)
 
 	role.AddToPolicy(
 		awsiam.NewPolicyStatement(

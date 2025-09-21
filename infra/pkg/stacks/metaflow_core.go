@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsecs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awselasticloadbalancingv2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsrds"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
@@ -25,6 +26,7 @@ type MetaflowMetadataTaskDefinitionInput struct {
 	NLBTargetGroupMigrate awselasticloadbalancingv2.CfnTargetGroup `name:"nlb_target_group_migrate"`
 	DB                    awsrds.CfnDBInstance                     `name:"DB"`
 	Credentials           awssecretsmanager.Secret                 `name:"db_credentials"`
+	ECSTaskRole           awsiam.Role                              `name:"ecs_task_role"`
 }
 
 type MetaflowMetadataTaskDefinitionOutput struct {
@@ -125,6 +127,7 @@ func mainTaskDefinition(stack awscdk.Stack, input MetaflowMetadataTaskDefinition
 			NetworkMode:   awsecs.NetworkMode_AWS_VPC,
 			Compatibility: awsecs.Compatibility_EC2_AND_FARGATE,
 			ExecutionRole: executionRole,
+			TaskRole:      input.ECSTaskRole,
 		},
 	)
 

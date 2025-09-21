@@ -31,6 +31,7 @@ type UIStackInput struct {
 	Credentials          awssecretsmanager.Secret `name:"db_credentials"`
 	Bucket               awss3.Bucket             `name:"s3_bucket"`
 	Cluster              awsecs.Cluster           `name:"ecs_cluster"`
+	ECSTaskRole          awsiam.Role              `name:"ecs_task_role"`
 }
 
 type UIStackOutput struct {
@@ -50,7 +51,7 @@ func BuildUIStack(in UIStackInput) UIStackOutput {
 
 	loadBalancer := applicationLoadBalancer(stack, in, in.SubnetA, in.SubnetB)
 	uiServiceTask := uiTaskDefinition(stack, in)
-	uiStaticTask := uiStaticTaskDefinition(stack)
+	uiStaticTask := uiStaticTaskDefinition(stack, in)
 
 	_, listener := uiStaticService(stack, in, loadBalancer, uiStaticTask, in.SubnetA, in.SubnetB)
 	_ = uiServiceFargateService(stack, in, uiServiceTask, listener, in.SubnetA, in.SubnetB)
@@ -93,6 +94,7 @@ func uiTaskDefinition(construct constructs.Construct, in UIStackInput) awsecs.Ta
 			NetworkMode:   awsecs.NetworkMode_AWS_VPC,
 			Compatibility: awsecs.Compatibility_EC2_AND_FARGATE,
 			ExecutionRole: executionRole,
+			TaskRole:      in.ECSTaskRole,
 		},
 	)
 
@@ -157,7 +159,7 @@ func uiTaskDefinition(construct constructs.Construct, in UIStackInput) awsecs.Ta
 	return task
 }
 
-func uiStaticTaskDefinition(construct constructs.Construct) awsecs.TaskDefinition {
+func uiStaticTaskDefinition(construct constructs.Construct, in UIStackInput) awsecs.TaskDefinition {
 	executionRole := commons.CreateECSExecutionRole(construct, "ECS UI Static Role")
 	task := awsecs.NewTaskDefinition(
 		construct,
@@ -169,6 +171,7 @@ func uiStaticTaskDefinition(construct constructs.Construct) awsecs.TaskDefinitio
 			NetworkMode:   awsecs.NetworkMode_AWS_VPC,
 			Compatibility: awsecs.Compatibility_EC2_AND_FARGATE,
 			ExecutionRole: executionRole,
+			TaskRole:      in.ECSTaskRole,
 		},
 	)
 

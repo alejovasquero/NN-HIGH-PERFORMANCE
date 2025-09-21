@@ -1,5 +1,5 @@
 {
-  "app": "go run cmd/main.go",
+  "app": "go run cmd/cdk/main.go",
   "watch": {
     "include": [
       "**"

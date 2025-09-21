@@ -27,6 +27,8 @@ func CreateECSExecutionRole(construct constructs.Construct, name string) awsiam.
 					pointer.ToString("ecr:BatchCheckLayerAvailability"),
 					pointer.ToString("ecr:GetDownloadUrlForLayer"),
 					pointer.ToString("ecr:BatchGetImage"),
+					pointer.ToString("logs:CreateLogStream"),
+					pointer.ToString("logs:PutLogEvents"),
 				},
 				Resources: &[]*string{
 					pointer.ToString("*"),

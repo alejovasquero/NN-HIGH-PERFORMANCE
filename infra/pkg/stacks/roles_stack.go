@@ -24,11 +24,12 @@ type RolesStackInput struct {
 
 type RolesStackOutput struct {
 	fx.Out
-	Stack             awscdk.Stack `group:"stacks"`
-	MetaflowUserRole  awsiam.Role  `name:"metaflow_user_role"`
-	EventBridgeRole   awsiam.Role  `name:"event_bridge_role"`
-	StepFunctionsRole awsiam.Role  `name:"step_functions_role"`
-	BatchS3Role       awsiam.Role  `name:"batch_s3_role"`
+	Stack              awscdk.Stack         `group:"stacks"`
+	MetaflowUserRole   awsiam.Role          `name:"metaflow_user_role"`
+	EventBridgeRole    awsiam.Role          `name:"event_bridge_role"`
+	StepFunctionsRole  awsiam.Role          `name:"step_functions_role"`
+	BatchS3Role        awsiam.Role          `name:"batch_s3_role"`
+	MetaflowUserPolicy awsiam.ManagedPolicy `name:"metaflow_user_policy"`
 }
 
 func BuildRolesStack(in RolesStackInput) RolesStackOutput {
@@ -43,13 +44,15 @@ func BuildRolesStack(in RolesStackInput) RolesStackOutput {
 	eventBridgeRole := buildEventBridgeRole(stack, in)
 	stepFunctionsRole := buildStepFunctionsRole(stack, in)
 	batchS3Role := buildBatchS3Role(stack, in)
+	metaflowUserPolicy := buildMetaflowUserPolicy(stack, in)
 
 	out := RolesStackOutput{
-		Stack:             stack,
-		MetaflowUserRole:  metaflowUserRole,
-		EventBridgeRole:   eventBridgeRole,
-		StepFunctionsRole: stepFunctionsRole,
-		BatchS3Role:       batchS3Role,
+		Stack:              stack,
+		MetaflowUserRole:   metaflowUserRole,
+		EventBridgeRole:    eventBridgeRole,
+		StepFunctionsRole:  stepFunctionsRole,
+		BatchS3Role:        batchS3Role,
+		MetaflowUserPolicy: metaflowUserPolicy,
 	}
 
 	return out
@@ -563,4 +566,187 @@ func buildBatchS3Role(construct constructs.Construct, input RolesStackInput) aws
 	)
 
 	return role
+}
+
+func buildMetaflowUserPolicy(construct constructs.Construct, input RolesStackInput) awsiam.ManagedPolicy {
+	return awsiam.NewManagedPolicy(
+		construct,
+		pointer.ToString("MetaflowUserPolicy"),
+		&awsiam.ManagedPolicyProps{
+			ManagedPolicyName: pointer.ToString("MetaflowUserPolicy"),
+			Statements: &[]awsiam.PolicyStatement{
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("cloudformation:DescribeStacks"),
+							pointer.ToString("cloudformation:*Stack"),
+							pointer.ToString("cloudformation:*ChangeSet"),
+						},
+						Resources: &[]*string{
+							pointer.ToString(fmt.Sprintf("arn:aws:cloudformation:%[1]s:%[2]s:stack/*", input.Account.Region, input.Account.AccountId)),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("s3:*"),
+						},
+						Resources: &[]*string{
+							input.MetaflowBucket.ArnForObjects(pointer.ToString("*")),
+							input.MetaflowBucket.BucketArn(),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("sagemaker:DescribeNotebook*"),
+							pointer.ToString("sagemaker:StartNotebookInstance"),
+							pointer.ToString("sagemaker:StopNotebookInstance"),
+							pointer.ToString("sagemaker:UpdateNotebookInstance"),
+							pointer.ToString("sagemaker:CreatePresignedNotebookInstanceUrl"),
+						},
+						Resources: &[]*string{
+							pointer.ToString(fmt.Sprintf("arn:aws:sagemaker:%[1]s:%[2]s:notebook-instance/*", input.Account.Region, input.Account.AccountId)),
+							pointer.ToString(fmt.Sprintf("arn:aws:sagemaker:%[1]s:%[2]s:notebook-instance-lifecycle-config/basic*", input.Account.Region, input.Account.AccountId)),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("iam:PassRole"),
+						},
+						Resources: &[]*string{
+							pointer.ToString(fmt.Sprintf("arn:aws:iam::%[1]s:role/*", input.Account.AccountId)),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("kms:Decrypt"),
+							pointer.ToString("kms:Encrypt"),
+						},
+						Resources: &[]*string{
+							pointer.ToString(fmt.Sprintf("arn:aws:kms:%[1]s:%[2]s:key/", input.Account.Region, input.Account.AccountId)),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Sid:    pointer.ToString("JobsPermissions"),
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("batch:TerminateJob"),
+							pointer.ToString("batch:DescribeJobs"),
+							pointer.ToString("batch:DescribeJobDefinitions"),
+							pointer.ToString("batch:DescribeJobQueues"),
+							pointer.ToString("batch:RegisterJobDefinition"),
+							pointer.ToString("batch:DescribeComputeEnvironments"),
+						},
+						Resources: &[]*string{
+							pointer.ToString("*"),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Sid:    pointer.ToString("DefinitionsPermissions"),
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("batch:SubmitJob"),
+						},
+						Resources: &[]*string{
+							pointer.ToString(fmt.Sprintf("arn:aws:batch:%[1]s:%[2]s:job-definition/*:*", input.Account.Region, input.Account.AccountId)),
+							input.JobQueue.Ref(),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Sid:    pointer.ToString("GetLogs"),
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("logs:GetLogEvents"),
+						},
+						Resources: &[]*string{
+							pointer.ToString(fmt.Sprintf("arn:aws:logs:%[1]s:%[2]s:log-group:*:log-stream:*", input.Account.Region, input.Account.AccountId)),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Sid:    pointer.ToString("AllowSagemakerCreate"),
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("sagemaker:CreateTrainingJob"),
+						},
+						Resources: &[]*string{
+							pointer.ToString(fmt.Sprintf("arn:aws:sagemaker:%[1]s:%[2]s:training-job/*", input.Account.Region, input.Account.AccountId)),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Sid:    pointer.ToString("AllowSagemakerDescribe"),
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("sagemaker:DescribeTrainingJob"),
+						},
+						Resources: &[]*string{
+							pointer.ToString(fmt.Sprintf("arn:aws:sagemaker:%[1]s:%[2]s:training-job/*", input.Account.Region, input.Account.AccountId)),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Sid:    pointer.ToString("TasksAndExecutionsGlobal"),
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("states:ListStateMachines"),
+						},
+						Resources: &[]*string{
+							pointer.ToString("*"),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Sid:    pointer.ToString("StateMachines"),
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("states:DescribeStateMachine"),
+							pointer.ToString("states:UpdateStateMachine"),
+							pointer.ToString("states:StartExecution"),
+							pointer.ToString("states:CreateStateMachine"),
+							pointer.ToString("states:ListExecutions"),
+							pointer.ToString("states:StopExecution"),
+						},
+						Resources: &[]*string{
+							pointer.ToString(fmt.Sprintf("arn:aws:states:%[1]s:%[2]s:stateMachine:*", input.Account.Region, input.Account.AccountId)),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
+						Sid:    pointer.ToString("PutRule"),
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("events:PutRule"),
+						},
+						Resources: &[]*string{
+							pointer.ToString(fmt.Sprintf("arn:aws:events:%[1]s:%[2]s:rule/*", input.Account.Region, input.Account.AccountId)),
+						},
+					},
+				),
+			},
+		},
+	)
 }

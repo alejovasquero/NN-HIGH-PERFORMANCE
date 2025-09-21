@@ -144,6 +144,8 @@ func bucket(scope constructs.Construct) awss3.Bucket {
 					RestrictPublicBuckets: pointer.ToBool(true),
 				},
 			),
+			AutoDeleteObjects: pointer.ToBool(true),
+			RemovalPolicy:     awscdk.RemovalPolicy_DESTROY,
 		},
 	)
 
