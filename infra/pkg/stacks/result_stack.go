@@ -99,7 +99,7 @@ func BuildResultStack(in ResultStackInput) ResultStackOutput {
 	internalServiceURL := awscdk.NewCfnOutput(
 		stack, pointer.ToString("METAFLOW_SERVICE_INTERNAL_URL"),
 		&awscdk.CfnOutputProps{
-			Value:       pointer.ToString(fmt.Sprintf("https://%s/", *in.LoadBalancer.AttrDnsName())),
+			Value:       pointer.ToString(fmt.Sprintf("http://%s/", *in.LoadBalancer.AttrDnsName())),
 			Description: pointer.ToString("METAFLOW_SERVICE_INTERNAL_URL"),
 		},
 	)

@@ -50,6 +50,30 @@ func BuildBatchStack(in BatchStackInput) BatchStackOutput {
 }
 
 func buildComputeEnvironment(construct constructs.Construct, input BatchStackInput, batchRole awsiam.Role) awsbatch.CfnComputeEnvironment {
+	securityGroup := awsec2.NewSecurityGroup(
+		construct,
+		pointer.ToString("BatchSecurityGroup"),
+		&awsec2.SecurityGroupProps{
+			Vpc:               input.VPC,
+			SecurityGroupName: pointer.ToString("MetaflowBatchSG"),
+			Description:       pointer.ToString("Security group for Metaflow Batch jobs"),
+			AllowAllOutbound:  pointer.ToBool(false),
+		},
+	)
+	securityGroup.ApplyRemovalPolicy(awscdk.RemovalPolicy_DESTROY)
+	securityGroup.AddEgressRule(
+		awsec2.Peer_Ipv4(pointer.ToString("0.0.0.0/0")),
+		awsec2.Port_HTTPS(),
+		pointer.ToString("Allow all outbound HTTTP traffic"),
+		nil,
+	)
+	securityGroup.AddEgressRule(
+		awsec2.Peer_Ipv4(pointer.ToString("0.0.0.0/0")),
+		awsec2.Port_HTTP(),
+		pointer.ToString("Allow all outbound HTTT traffic"),
+		nil,
+	)
+
 	computeEnv := awsbatch.NewCfnComputeEnvironment(
 		construct,
 		pointer.ToString("ComputeEnvironment"),
@@ -60,7 +84,7 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 				Type:     pointer.ToString("FARGATE"),
 				MaxvCpus: pointer.ToFloat64(16),
 				SecurityGroupIds: &[]*string{
-					input.VPC.VpcDefaultSecurityGroup(),
+					securityGroup.SecurityGroupId(),
 				},
 				Subnets: &[]*string{
 					input.SubnetA.Ref(),

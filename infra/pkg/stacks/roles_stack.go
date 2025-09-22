@@ -736,6 +736,19 @@ func buildMetaflowUserPolicy(construct constructs.Construct, input RolesStackInp
 				),
 				awsiam.NewPolicyStatement(
 					&awsiam.PolicyStatementProps{
+						Sid:    pointer.ToString("RuleMaintenance"),
+						Effect: awsiam.Effect_ALLOW,
+						Actions: &[]*string{
+							pointer.ToString("events:PutTargets"),
+							pointer.ToString("events:DisableRule"),
+						},
+						Resources: &[]*string{
+							pointer.ToString(fmt.Sprintf("arn:aws:events:%[1]s:%[2]s:rule/*", input.Account.Region, input.Account.AccountId)),
+						},
+					},
+				),
+				awsiam.NewPolicyStatement(
+					&awsiam.PolicyStatementProps{
 						Sid:    pointer.ToString("PutRule"),
 						Effect: awsiam.Effect_ALLOW,
 						Actions: &[]*string{

@@ -8,6 +8,8 @@ import (
 	"github.com/AlekSi/pointer"
 	"github.com/alejovasquero/NN-HIGH-PERFORMANCE/internal/commons"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsbatch"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsdynamodb"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awselasticloadbalancingv2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
@@ -20,11 +22,17 @@ import (
 
 type NotebookStackInput struct {
 	fx.In
-	Account      commons.Account
-	SubnetA      awsec2.CfnSubnet                          `name:"metaflow_subnet_a"`
-	VPC          awsec2.Vpc                                `name:"metaflow_vpc"`
-	LoadBalancer awselasticloadbalancingv2.CfnLoadBalancer `name:"network_load_balancer"`
-	Bucket       awss3.Bucket                              `name:"s3_bucket"`
+	Account           commons.Account
+	SubnetA           awsec2.CfnSubnet                          `name:"metaflow_subnet_a"`
+	VPC               awsec2.Vpc                                `name:"metaflow_vpc"`
+	LoadBalancer      awselasticloadbalancingv2.CfnLoadBalancer `name:"network_load_balancer"`
+	Bucket            awss3.Bucket                              `name:"s3_bucket"`
+	JobQueue          awsbatch.CfnJobQueue                      `name:"batch_job_queue"`
+	BatchS3Role       awsiam.Role                               `name:"batch_s3_role"`
+	EventBridgeRole   awsiam.Role                               `name:"event_bridge_role"`
+	StateDDB          awsdynamodb.CfnGlobalTable                `name:"state_ddb"`
+	StepFunctionsRole awsiam.Role                               `name:"step_functions_role"`
+	BatchRole         awsiam.Role                               `name:"batch_execution_role"`
 }
 
 type NotebookStackOutput struct {
@@ -89,8 +97,24 @@ echo 'export METAFLOW_SERVICE_URL=http://%[2]s/' >> /etc/profile.d/jupyter-env.s
 echo 'export AWS_DEFAULT_REGION=%[3]s' >> /etc/profile.d/jupyter-env.sh
 echo 'export METAFLOW_DEFAULT_DATASTORE=s3' >> /etc/profile.d/jupyter-env.sh
 echo 'export METAFLOW_DEFAULT_METADATA=service' >> /etc/profile.d/jupyter-env.sh
+echo 'export METAFLOW_BATCH_JOB_QUEUE=%[4]s' >> /etc/profile.d/jupyter-env.sh
+echo 'export METAFLOW_ECS_S3_ACCESS_IAM_ROLE=%[5]s' >> /etc/profile.d/jupyter-env.sh
+echo 'export METAFLOW_EVENTS_SFN_ACCESS_IAM_ROLE=%[6]s' >> /etc/profile.d/jupyter-env.sh
+echo 'export METAFLOW_SFN_DYNAMO_DB_TABLE=%[7]s' >> /etc/profile.d/jupyter-env.sh
+echo 'export METAFLOW_SFN_IAM_ROLE=%[8]s' >> /etc/profile.d/jupyter-env.sh
+echo 'export METAFLOW_ECS_FARGATE_EXECUTION_ROLE=%[9]s' >> /etc/profile.d/jupyter-env.sh
 echo -e "Finished create script"
-systemctl restart jupyter-server`, *input.Bucket.BucketName(), *input.LoadBalancer.AttrDnsName(), input.Account.Region)
+systemctl restart jupyter-server`,
+		*input.Bucket.BucketName(),
+		*input.LoadBalancer.AttrDnsName(),
+		input.Account.Region,
+		*input.JobQueue.AttrJobQueueArn(),
+		*input.BatchS3Role.RoleArn(),
+		*input.EventBridgeRole.RoleArn(),
+		*input.StateDDB.TableName(),
+		*input.StepFunctionsRole.RoleArn(),
+		*input.BatchRole.RoleArn(),
+	)
 
 	startHook := `#!/bin/bash
 set -e

@@ -11,22 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const a string = `
-{
-    "METAFLOW_BATCH_JOB_QUEUE": "arn:aws:batch:us-east-2:450119683363:job-queue/MetaflowBatchJobQueue",
-    "METAFLOW_DATASTORE_SYSROOT_S3": "s3://persistencestack-metaflowbucketb2a7a044-5av20e1o10ur/metaflow",
-    "METAFLOW_DATATOOLS_S3ROOT": "s3://persistencestack-metaflowbucketb2a7a044-5av20e1o10ur/data",
-    "METAFLOW_DEFAULT_DATASTORE": "s3",
-    "METAFLOW_DEFAULT_METADATA": "service",
-    "METAFLOW_ECS_S3_ACCESS_IAM_ROLE": "arn:aws:iam::450119683363:role/BatchS3Role",
-    "METAFLOW_EVENTS_SFN_ACCESS_IAM_ROLE": "arn:aws:iam::450119683363:role/EventBridgeRole",
-    "METAFLOW_SERVICE_INTERNAL_URL": "https://Metafl-Metaf-foadUCUjiZzO-338cd3c42ad22e9b.elb.us-east-2.amazonaws.com/",
-    "METAFLOW_SERVICE_URL": "https://5kedgbj7ol.execute-api.us-east-2.amazonaws.com/api/",
-    "METAFLOW_SFN_DYNAMO_DB_TABLE": "MetaflowStepFunctionsState",
-    "METAFLOW_SFN_IAM_ROLE": "arn:aws:iam::450119683363:role/StepFunctionsRole",
-    "METAFLOW_ECS_FARGATE_EXECUTION_ROLE": "arn:aws:iam::450119683363:role/BatchExecutionRole"
-}`
-
 const figlet string = `    _   ___   ____  ______________  ______  __________  __________  ____  __  ______    _   ______________
    / | / / | / / / / /  _/ ____/ / / / __ \/ ____/ __ \/ ____/ __ \/ __ \/  |/  /   |  / | / / ____/ ____/
   /  |/ /  |/ / /_/ // // / __/ /_/ / /_/ / __/ / /_/ / /_  / / / / /_/ / /|_/ / /| | /  |/ / /   / __/   
