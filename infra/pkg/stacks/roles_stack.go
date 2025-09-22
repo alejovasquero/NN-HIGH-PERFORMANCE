@@ -569,7 +569,7 @@ func buildBatchS3Role(construct constructs.Construct, input RolesStackInput) aws
 }
 
 func buildMetaflowUserPolicy(construct constructs.Construct, input RolesStackInput) awsiam.ManagedPolicy {
-	return awsiam.NewManagedPolicy(
+	policy := awsiam.NewManagedPolicy(
 		construct,
 		pointer.ToString("MetaflowUserPolicy"),
 		&awsiam.ManagedPolicyProps{
@@ -762,4 +762,7 @@ func buildMetaflowUserPolicy(construct constructs.Construct, input RolesStackInp
 			},
 		},
 	)
+
+	policy.ApplyRemovalPolicy(awscdk.RemovalPolicy_RETAIN_ON_UPDATE_OR_DELETE)
+	return policy
 }
