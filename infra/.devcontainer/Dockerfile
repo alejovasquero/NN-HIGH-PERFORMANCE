@@ -4,9 +4,9 @@ ARG NODE_VERSION=22.0.0
 ARG GO_VERSION=1.24.3
 ARG USER_NAME=arch
 
-RUN useradd -m ${USER_NAME} 
+RUN useradd -m ${USER_NAME} && echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-RUN pacman -Sy --noconfirm git fzf openssh cmake unzip less python python-pip
+RUN pacman -Sy --noconfirm git fzf openssh cmake unzip less python python-pip docker gum socat
 
 
 ENV NVM_DIR=/usr/local/nvm

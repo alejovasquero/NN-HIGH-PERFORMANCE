@@ -16,7 +16,22 @@
 				"ms-python.python"
 			]
 		}
-	}
+	},
+	"runArgs": [ // Enable GPU access
+		"--name",
+		"nn-high-performance",
+		"--gpus",
+		"all",
+		"-v",
+		"/var/run/docker.sock:/var/run/docker.sock",
+		"--privileged",
+		"-v",
+		"/sys/fs/cgroup:/sys/fs/cgroup:rw",
+		"-v",
+		"/var/lib/docker:/var/lib/docker",
+		"--cgroupns=host"
+    ],
+	"postCreateCommand": "sudo chown arch /var/run/docker.sock"
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
