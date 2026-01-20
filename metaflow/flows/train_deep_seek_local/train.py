@@ -57,5 +57,4 @@ def train_model(model_name: str) -> None:
 
 
 def main():
-    print("HELLO")
-    train_model("test")
+    train_model()

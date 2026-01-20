@@ -1,42 +1,39 @@
-from metaflow import FlowSpec, step, current, Parameter
-import data_store
-
+from metaflow import FlowSpec, step, current, torchrun, kubernetes
 import config
 
-from unsloth import is_bfloat16_supported
-
-class DeepSeepR1CPUTraining(FlowSpec):
-    model_config = config.DeepSeekConfig()
+class DeepSeekFlow(FlowSpec):
+    training_config = config.TrainingConfig()
 
     @step
     def start(self):
-        self.next(self.load_dataset)
+        self.next(self.train_multinode, num_parallel=2)
 
-
+    @kubernetes(
+        image="registry.hub.docker.com/pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime",
+        cpu=1,
+        memory=2000,
+        shared_memory=8000,
+    )
+    @torchrun
     @step
-    def load_dataset(self):
-        print("Preloading dataset in local path")
-        self.ds_config = config.DataStoreConfig()
-        data_store.DataStore.load_from_hugging_face(self.ds_config)
-        self.next(self.train_model)
-
-    @step
-    def train_model(self):
-        print("Running training script...")
-
+    def train_multinode(self):
         current.torch.run(
             entrypoint="train.py",
             entrypoint_args={
                 "dataset_path": config.DataStoreConfig().local_path
             },
-            master_port="41000",
+            nproc_per_node=1,
         )
-        self.next(self.end)
+        self.next(self.join)
 
+    @step
+    def join(self, inputs):
+        print("Finished training. Wrapping up...")
+        self.next(self.end)
 
     @step
     def end(self):
         print("Finished")
 
 if __name__ == '__main__':
-    DeepSeepR1CPUTraining()
+    DeepSeekFlow()
