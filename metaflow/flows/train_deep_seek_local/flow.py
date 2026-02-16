@@ -1,10 +1,20 @@
-from metaflow import FlowSpec, step, current, torchrun, kubernetes, pypi, S3
+from metaflow import FlowSpec, step, current, kubernetes, pypi, S3
 import config
-import data_store
+import store
 
 class DeepSeekFlow(FlowSpec):
-    training_config = config.TrainingConfig()
-    data_config = config.DataStoreConfig()
+
+    @property
+    def data_config(self) -> config.DataStoreConfig:
+        return config.DataStoreConfig()
+    
+    @property
+    def training_config(self) -> config.TrainingConfig:
+        return config.TrainingConfig()
+
+    @property
+    def data_store(self) -> store.DataStore:
+        return store.DataStore(self.data_config.s3_prefix)
 
     @step
     def start(self):
@@ -12,15 +22,28 @@ class DeepSeekFlow(FlowSpec):
 
     @step
     def load_dataset(self):
-        data_st = data_store.DataStore()
-        perfect_blend_dataset = data_st.load_from_hugging_face(dataset_path=self.data_config.hugging_face_name)
-        perfect_blend_dataset.save_to_disk(self.data_config.local_path)
+        from unsloth import FastLanguageModel
 
+        perfect_blend_dataset = self.data_store.load_from_hugging_face(dataset_path=self.data_config.hugging_face_name)
+        print("Dataset downloaded from hugging face...")
 
-        with S3(run=self) as s3:
-            if s3.list_paths(keys=[self.data_config.local_path]) == 0:
-                print("Uploading dataset to S3")
-                s3.put_files(self.data_config.local_path)
+        print("Loading model tokenizer...")
+        _, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=self.training_config.model_name,
+            load_in_4bit=True,
+        )
+
+        print("Tokenizing dataset...")
+        perfect_blend_dataset = self.data_store.format_and_tokenize(dataset=perfect_blend_dataset, tokenizer=tokenizer)
+
+        # chunk and pack the dataset, whatever that means
+
+        if not self.data_store.already_exists():
+            print("Uploading tokenized dataset to S3...")
+            perfect_blend_dataset.save_to_disk(self.data_config.local_path)
+            self.data_store.upload(local_path=self.data_config.local_path)
+        else:
+            print("Dataset already found in S3. Skipping re upload.")
 
         self.next(self.train)
 
@@ -33,12 +56,17 @@ class DeepSeekFlow(FlowSpec):
     )
     @step
     def train(self):
+        # download dataset from s3
+
+
         current.torch.run(
             entrypoint="train.py",
             entrypoint_args={
-                "dataset_path": self.data_config.local_path
+                "dataset_path": self.data_config.local_path,
+                # pass the full model args. All args of the model and dataset should be here
             },
             nproc_per_node=1,
+            master_port=41000,
         )
         self.next(self.end)
 
