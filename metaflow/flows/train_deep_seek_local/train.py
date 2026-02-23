@@ -58,3 +58,7 @@ def train_model(model_name: str) -> None:
 
 def main():
     train_model()
+
+
+if __name__ == "__main__":
+    main()

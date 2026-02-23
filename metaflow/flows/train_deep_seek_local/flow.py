@@ -22,28 +22,28 @@ class DeepSeekFlow(FlowSpec):
 
     @step
     def load_dataset(self):
-        from unsloth import FastLanguageModel
-
-        perfect_blend_dataset = self.data_store.load_from_hugging_face(dataset_path=self.data_config.hugging_face_name)
-        print("Dataset downloaded from hugging face...")
-
-        print("Loading model tokenizer...")
-        _, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=self.training_config.model_name,
-            load_in_4bit=True,
-        )
-
-        print("Tokenizing dataset...")
-        perfect_blend_dataset = self.data_store.format_and_tokenize(dataset=perfect_blend_dataset, tokenizer=tokenizer)
-
-        # chunk and pack the dataset, whatever that means
-
+        print("Checking if dataset exists")
         if not self.data_store.already_exists():
+            from unsloth import FastLanguageModel
+
+            perfect_blend_dataset = self.data_store.load_from_hugging_face(dataset_path=self.data_config.hugging_face_name)
+            print("Dataset downloaded from hugging face...")
+
+            print("Loading model tokenizer...")
+            _, tokenizer = FastLanguageModel.from_pretrained(
+                model_name=self.training_config.model_name,
+                load_in_4bit=True,
+            )
+
+            print("Tokenizing dataset...")
+            perfect_blend_dataset = self.data_store.format_and_tokenize(dataset=perfect_blend_dataset, tokenizer=tokenizer)
+
+            # chunk and pack the dataset, whatever that means
             print("Uploading tokenized dataset to S3...")
             perfect_blend_dataset.save_to_disk(self.data_config.local_path)
             self.data_store.upload(local_path=self.data_config.local_path)
         else:
-            print("Dataset already found in S3. Skipping re upload.")
+            print("Dataset already found in S3. Skipping re upload")
 
         self.next(self.train)
 

@@ -27,3 +27,25 @@ Use local environment.
 metaflow-dev shell
 source virtual-env/bin/activate
 ```
+
+
+Notes:
+
+- If you are having trouble loading large files in minio using the S3 utility, increase resources in the kubernetes deployment for minio
+
+    ```
+    kubectl edit deployment minio
+    ```
+
+
+    Change to a value you consider appropiate.
+
+    ```
+    resources:
+        limits:
+        cpu: "1"
+        memory: 2Gi
+        requests:
+        cpu: "1"
+        memory: 2Gi
+    ```

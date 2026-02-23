@@ -12,14 +12,11 @@ class BaseStore:
 
     def __init__(self, s3_prefix: str):
         self._store_root = os.path.join(DATATOOLS_S3ROOT, s3_prefix)
-        print(self._store_root)
 
     @staticmethod
     def _walk_directory(root):
         path_keys = []
-        print(root)
         for path, _, files in os.walk(root):
-            print(path, files)
             for name in files:
                 path_keys.append(
                     (
@@ -70,8 +67,17 @@ class DataStore(BaseStore):
         dataset = standardize_sharegpt(dataset)
         format_dataset = dataset.map(_format_conversation, batched=False, keep_in_memory=True, remove_columns=list(dataset.features))
 
-        print("After formatting", format_dataset[randint(0, len(dataset))]["text"])
+        print("After standarization", format_dataset[randint(0, len(dataset))]["text"])
 
-        return format_dataset
 
-    
+        print("Starting tokenization...")
+        tokenized_dataset = format_dataset.map(
+            lambda sample: tokenizer(sample["text"]),
+            batched=True,
+            remove_columns=list(format_dataset.features),
+            num_proc=8,
+        )
+
+        print("After tokenization", tokenized_dataset[randint(0, len(dataset))])
+
+        return tokenized_dataset
