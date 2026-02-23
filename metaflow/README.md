@@ -1,6 +1,7 @@
 Requirements:
 * python3
 * docker
+* CUDA (https://developer.nvidia.com/cuda-downloads)
 
 Configure environment for local metaflow runs.
 
