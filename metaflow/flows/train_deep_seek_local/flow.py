@@ -1,6 +1,14 @@
-from metaflow import FlowSpec, step, current, kubernetes, pypi, S3
+from metaflow import FlowSpec, step, current, torchrun, pypi
 import config
 import store
+from gpu_profile import gpu_profile
+
+_PACKAGES = {
+    "datasets": "4.3.0",
+    "transformers": "4.57.1",
+    "unsloth": "2025.11.2",
+    "tensorboard": "2.20.0",
+}
 
 class DeepSeekFlow(FlowSpec):
 
@@ -16,10 +24,12 @@ class DeepSeekFlow(FlowSpec):
     def data_store(self) -> store.DataStore:
         return store.DataStore(self.data_config.s3_prefix)
 
+    @pypi(packages=_PACKAGES)
     @step
     def start(self):
         self.next(self.load_dataset)
 
+    @pypi(packages=_PACKAGES)
     @step
     def load_dataset(self):
         print("Checking if dataset exists")
@@ -47,26 +57,38 @@ class DeepSeekFlow(FlowSpec):
 
         self.next(self.train)
 
-    
-    @kubernetes(
-        image="registry.hub.docker.com/pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime",
-        cpu=1,
-        memory=2000,
-        shared_memory=8000,
-    )
+    @gpu_profile()
+    @pypi(packages=_PACKAGES)
     @step
     def train(self):
-        # download dataset from s3
+        print("Downloading tokenized dataset...")
 
+        self.data_store.download(local_path=self.data_config.local_path)
+        from metaflow import TorchrunSingleNodeMultiGPU
 
-        current.torch.run(
-            entrypoint="train.py",
+        executor = TorchrunSingleNodeMultiGPU()
+        executor.run(
+            entrypoint="flows/train_deep_seek_local/train.py",
             entrypoint_args={
                 "dataset_path": self.data_config.local_path,
-                # pass the full model args. All args of the model and dataset should be here
+                "model_id": self.training_config.model_name,
+                "bf16": True,
+                "learning_rate": 2e-4,
+                "output_dir": "/tmp/model/deepseekv2lite",
+                "overwrite_output_dir": True,
+                "warmup_steps": 5,
+                "weight_decay": 0.01, 
+                "packing": False,
+                "report_to": "tensorboard",
+                "logging_dir": "/tmp/model/deepseeklitev2history",
+                "logging_steps": 2,
+                "per_device_train_batch_size": 1,
+                "num_train_epochs": 1,
+                "gradient_accumulation_steps": 4,
+                "max_steps": 500,
+                "save_steps": 50,
             },
             nproc_per_node=1,
-            master_port=41000,
         )
         self.next(self.end)
 

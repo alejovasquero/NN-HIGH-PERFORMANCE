@@ -1,5 +1,6 @@
 from typing import Any
 import os
+import shutil
 from metaflow import S3
 from random import randint
 
@@ -38,6 +39,19 @@ class BaseStore:
             final_path = os.path.join(self._store_root, store_key)
             with S3(s3root=final_path) as s3:
                 s3.put_files(key_paths=[(local_path, local_path)])
+
+
+    def download(self, local_path: str, store_key: str = "") -> None:
+
+        os.makedirs(name=local_path, exist_ok=True)
+        final_path = os.path.join(self._store_root, store_key)
+
+        with S3(s3root=final_path) as s3:
+            for s3obj in s3.get_all():
+                print(s3obj)
+                local_object_path = os.path.join(local_path, s3obj.key)
+                shutil.move(s3obj.path, local_object_path)
+
 
     def already_exists(self, store_key: str = "") -> bool:
         final_path = os.path.join(self._store_root, store_key)

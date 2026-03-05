@@ -50,3 +50,5 @@ Notes:
         cpu: "1"
         memory: 2Gi
     ```
+
+If using nvidia, remember to install cuda and cuda toolkit.
