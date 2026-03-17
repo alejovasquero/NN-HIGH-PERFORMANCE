@@ -36,7 +36,8 @@ func BuildBatchStack(in BatchStackInput) BatchStackOutput {
 		},
 	)
 	batchRole := buildBatchExecutionRole(stack)
-	computeEnv := buildComputeEnvironment(stack, in, batchRole)
+	instanceProfile := buildInstanceProfile(stack)
+	computeEnv := buildComputeEnvironment(stack, in, batchRole, instanceProfile)
 	jobQueue := buildJobQueue(stack, computeEnv)
 
 	out := BatchStackOutput{
@@ -49,7 +50,43 @@ func BuildBatchStack(in BatchStackInput) BatchStackOutput {
 	return out
 }
 
-func buildComputeEnvironment(construct constructs.Construct, input BatchStackInput, batchRole awsiam.Role) awsbatch.CfnComputeEnvironment {
+func buildInstanceProfile(construct constructs.Construct) awsiam.CfnInstanceProfile {
+	instanceRole := awsiam.NewCfnRole(
+		construct,
+		pointer.ToString("BatchInstanceRole"),
+		&awsiam.CfnRoleProps{
+			AssumeRolePolicyDocument: &map[string]interface{}{
+				"Version": pointer.ToString("2012-10-17"),
+				"Statement": []interface{}{
+					map[string]interface{}{
+						"Effect": pointer.ToString("Allow"),
+						"Principal": map[string]interface{}{
+							"Service": pointer.ToString("ec2.amazonaws.com"),
+						},
+						"Action": pointer.ToString("sts:AssumeRole"),
+					},
+				},
+			},
+			Path: pointer.ToString("/"),
+			ManagedPolicyArns: &[]*string{
+				pointer.ToString("arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"),
+			},
+		},
+	)
+
+	instanceProfile := awsiam.NewCfnInstanceProfile(
+		construct,
+		pointer.ToString("BatchInstanceProfile"),
+		&awsiam.CfnInstanceProfileProps{
+			Roles: &[]*string{
+				instanceRole.Ref(),
+			},
+		},
+	)
+	return instanceProfile
+}
+
+func buildComputeEnvironment(construct constructs.Construct, input BatchStackInput, batchRole awsiam.Role, instanceProfile awsiam.CfnInstanceProfile) awsbatch.CfnComputeEnvironment {
 	securityGroup := awsec2.NewSecurityGroup(
 		construct,
 		pointer.ToString("BatchSecurityGroup"),
@@ -81,7 +118,7 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 			Type:        pointer.ToString("MANAGED"),
 			ServiceRole: batchRole.RoleArn(),
 			ComputeResources: &awsbatch.CfnComputeEnvironment_ComputeResourcesProperty{
-				Type:     pointer.ToString("FARGATE"),
+				Type:     pointer.ToString("EC2"),
 				MaxvCpus: pointer.ToFloat64(16),
 				SecurityGroupIds: &[]*string{
 					securityGroup.SecurityGroupId(),
@@ -90,6 +127,12 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 					input.SubnetA.Ref(),
 					input.SubnetB.Ref(),
 				},
+				InstanceRole: instanceProfile.Ref(),
+				InstanceTypes: &[]*string{
+					pointer.ToString("trn1.2xlarge"),
+				},
+				DesiredvCpus: pointer.ToFloat64(8),
+				MinvCpus:     pointer.ToFloat64(6),
 			},
 			State: pointer.ToString("ENABLED"),
 		},

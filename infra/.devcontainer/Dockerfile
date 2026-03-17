@@ -1,10 +1,15 @@
-FROM archlinux:base-devel-20250511.0.348143 AS arch
+FROM archlinux:base-devel-20260315.0.500537 AS arch
 
 ARG NODE_VERSION=22.0.0
 ARG GO_VERSION=1.24.3
 ARG USER_NAME=arch
 
 RUN useradd -m ${USER_NAME} && echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+RUN pacman-key --init && \
+    pacman-key --populate archlinux && \
+    pacman -Sy --noconfirm archlinux-keyring
+
 
 RUN pacman -Sy --noconfirm git fzf openssh cmake unzip less python python-pip docker gum socat
 
