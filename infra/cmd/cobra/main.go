@@ -68,7 +68,8 @@ func main() {
 		Short: "Show the Metaflow configuration",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Print(figlet)
-			cfnCommand := exec.Command("aws", "cloudformation", "describe-stacks", "--stack-name", "ResultStack", "--query", "Stacks[0].Outputs[][Description, OutputValue]")
+			cfnCommand := exec.Command("aws", "cloudformation", "describe-stacks", "--stack-name", "ResultStack", "--query", "Stacks[0].Outputs[][Description, OutputValue]", "--region", "us-east-2")
+			cfnCommand.Stderr = os.Stderr
 			result, err := cfnCommand.Output()
 
 			if err != nil {

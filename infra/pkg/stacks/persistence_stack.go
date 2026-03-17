@@ -57,7 +57,7 @@ func BuildPersistenceStack(in PersistenceStackInput) PersistenceStackOutput {
 }
 
 func dbSubnetGroup(construct constructs.Construct, subnets ...awsec2.CfnSubnet) awsrds.CfnDBSubnetGroup {
-	var subnetIds = make([]*string, len(subnets))
+	var subnetIds = make([]any, len(subnets))
 	for i, subnet := range subnets {
 		subnetIds[i] = subnet.Ref()
 	}
@@ -118,11 +118,11 @@ func dbInstance(construct constructs.Construct, credentials awssecretsmanager.Se
 			DeleteAutomatedBackups: pointer.ToBool(true),
 			StorageType:            pointer.ToString("gp2"),
 			Engine:                 pointer.ToString("postgres"),
-			EngineVersion:          awsrds.PostgresEngineVersion_VER_16_3().PostgresFullVersion(),
+			EngineVersion:          awsrds.PostgresEngineVersion_VER_16_12().PostgresFullVersion(),
 			MasterUsername:         usernameToken.UnsafeUnwrap(),
 			MasterUserPassword:     passwordToken.UnsafeUnwrap(),
 			DbSubnetGroupName:      subnetGroup.Ref(),
-			VpcSecurityGroups:      &[]*string{input.DBSecurityGroup.SecurityGroupId()},
+			VpcSecurityGroups:      &[]any{input.DBSecurityGroup.SecurityGroupId()},
 			PubliclyAccessible:     pointer.ToBool(true),
 		},
 	)

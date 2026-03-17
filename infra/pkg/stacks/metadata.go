@@ -77,7 +77,7 @@ func BuildMetaflowMetadataStack(input MetaflowMetadataInput) MetaflowMetadataOut
 }
 
 func loadBalancer(stack awscdk.Stack, SecurityGroup awsec2.SecurityGroup, subNets ...awsec2.CfnSubnet) awselasticloadbalancingv2.CfnLoadBalancer {
-	var subNetsIds = make([]*string, len(subNets))
+	var subNetsIds = make([]any, len(subNets))
 	for i, v := range subNets {
 		subNetsIds[i] = v.Ref()
 	}
@@ -89,7 +89,7 @@ func loadBalancer(stack awscdk.Stack, SecurityGroup awsec2.SecurityGroup, subNet
 			Type:    pointer.ToString("network"),
 			Subnets: &subNetsIds,
 			Scheme:  pointer.ToString("internal"),
-			SecurityGroups: &[]*string{
+			SecurityGroups: &[]any{
 				SecurityGroup.SecurityGroupId(),
 			},
 		},

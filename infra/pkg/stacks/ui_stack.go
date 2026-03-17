@@ -63,7 +63,7 @@ func BuildUIStack(in UIStackInput) UIStackOutput {
 }
 
 func applicationLoadBalancer(stack awscdk.Stack, in UIStackInput, subnets ...awsec2.CfnSubnet) awselasticloadbalancingv2.CfnLoadBalancer {
-	var subnetsIds = make([]*string, len(subnets))
+	var subnetsIds = make([]interface{}, len(subnets))
 
 	for i, v := range subnets {
 		subnetsIds[i] = v.Ref()
@@ -75,7 +75,7 @@ func applicationLoadBalancer(stack awscdk.Stack, in UIStackInput, subnets ...aws
 		&awselasticloadbalancingv2.CfnLoadBalancerProps{
 			Subnets:        &subnetsIds,
 			Type:           pointer.ToString("application"),
-			SecurityGroups: &[]*string{in.UISecurityGroup.SecurityGroupId()},
+			SecurityGroups: &[]any{in.UISecurityGroup.SecurityGroupId()},
 		},
 	)
 

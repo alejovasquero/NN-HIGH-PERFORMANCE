@@ -68,7 +68,7 @@ func buildInstanceProfile(construct constructs.Construct) awsiam.CfnInstanceProf
 				},
 			},
 			Path: pointer.ToString("/"),
-			ManagedPolicyArns: &[]*string{
+			ManagedPolicyArns: &[]any{
 				pointer.ToString("arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"),
 			},
 		},
@@ -78,7 +78,7 @@ func buildInstanceProfile(construct constructs.Construct) awsiam.CfnInstanceProf
 		construct,
 		pointer.ToString("BatchInstanceProfile"),
 		&awsiam.CfnInstanceProfileProps{
-			Roles: &[]*string{
+			Roles: &[]any{
 				instanceRole.Ref(),
 			},
 		},
