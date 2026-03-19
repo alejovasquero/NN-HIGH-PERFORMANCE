@@ -134,7 +134,7 @@ func metaflowSubnetB(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.CfnSubnet {
 		&awsec2.CfnSubnetProps{
 			VpcId:               vpc.VpcId(),
 			CidrBlock:           &subnetBCIDR,
-			AvailabilityZone:    (*stack.AvailabilityZones())[1],
+			AvailabilityZone:    (*stack.AvailabilityZones())[2],
 			MapPublicIpOnLaunch: pointer.ToBool(true),
 			Tags: &[]*awscdk.CfnTag{
 				{

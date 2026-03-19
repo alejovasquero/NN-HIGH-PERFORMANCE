@@ -8,6 +8,7 @@ _PACKAGES = {
     "transformers": "4.57.1",
     "tensorboard": "2.20.0",
     "git+https://github.com/huggingface/optimum-neuron.git": "",
+    "unsloth": "2025.11.2",
 }
 
 class DeepSeekFlowTrn(FlowSpec):
@@ -34,15 +35,14 @@ class DeepSeekFlowTrn(FlowSpec):
     def load_dataset(self):
         print("Checking if dataset exists")
         if not self.data_store.already_exists():
-            from unsloth import FastLanguageModel
+            from transformers import AutoTokenizer
 
             perfect_blend_dataset = self.data_store.load_from_hugging_face(dataset_path=self.data_config.hugging_face_name)
             print("Dataset downloaded from hugging face...")
 
             print("Loading model tokenizer...")
-            _, tokenizer = FastLanguageModel.from_pretrained(
-                model_name=self.training_config.model_name,
-                load_in_4bit=True,
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_name=self.training_config.model_name,                
             )
 
             print("Tokenizing dataset...")
@@ -59,9 +59,9 @@ class DeepSeekFlowTrn(FlowSpec):
 
     @pypi(packages=_PACKAGES)
     @batch(
-        trainium=16,
-        cpu=96,
-        memory=500000,
+        trainium=1,
+        cpu=8,
+        memory=32000,
     )
     @torchrun
     @step
@@ -71,7 +71,7 @@ class DeepSeekFlowTrn(FlowSpec):
         self.data_store.download(local_path=self.data_config.local_path)
         current.torch.run(
             torchrun_args={"master_port": "41000"},
-            entrypoint="run_clm.py",
+            entrypoint="train.py",
             entrypoint_args={
                 "dataset_path": self.data_config.local_path,
                 "model_id": self.training_config.model_name,

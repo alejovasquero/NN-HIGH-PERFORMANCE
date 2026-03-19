@@ -110,6 +110,12 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 		pointer.ToString("Allow all outbound HTTT traffic"),
 		nil,
 	)
+	securityGroup.AddIngressRule(
+		awsec2.Peer_AnyIpv4(),
+		awsec2.Port_AllTraffic(),
+		pointer.ToString("All trafic ingress"),
+		nil,
+	)
 
 	computeEnv := awsbatch.NewCfnComputeEnvironment(
 		construct,
@@ -119,20 +125,21 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 			ServiceRole: batchRole.RoleArn(),
 			ComputeResources: &awsbatch.CfnComputeEnvironment_ComputeResourcesProperty{
 				Type:     pointer.ToString("EC2"),
-				MaxvCpus: pointer.ToFloat64(16),
+				MaxvCpus: pointer.ToFloat64(32),
 				SecurityGroupIds: &[]*string{
 					securityGroup.SecurityGroupId(),
 				},
 				Subnets: &[]*string{
-					input.SubnetA.Ref(),
+					// input.SubnetA.Ref(),
 					input.SubnetB.Ref(),
 				},
 				InstanceRole: instanceProfile.Ref(),
 				InstanceTypes: &[]*string{
 					pointer.ToString("trn1.2xlarge"),
 				},
-				DesiredvCpus: pointer.ToFloat64(8),
-				MinvCpus:     pointer.ToFloat64(6),
+				DesiredvCpus:       pointer.ToFloat64(8),
+				MinvCpus:           pointer.ToFloat64(6),
+				AllocationStrategy: pointer.ToString("BEST_FIT_PROGRESSIVE"),
 			},
 			State: pointer.ToString("ENABLED"),
 		},
