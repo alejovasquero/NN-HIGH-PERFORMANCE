@@ -14,3 +14,4 @@ class DataStoreConfig:
     hugging_face_name: str = "mlabonne/open-perfectblend"
     local_path = "/tmp/open-perfectblend"
     s3_prefix = "perfect-blend"
+    results_s3_prefix = "results"

@@ -23,6 +23,11 @@ class DeepSeekFlow(FlowSpec):
     @property
     def data_store(self) -> store.DataStore:
         return store.DataStore(self.data_config.s3_prefix)
+    
+    @property
+    def results_store(self) -> store.ResultsStore:
+        return store.ResultsStore(self.data_config.s3_prefix)
+
 
     @pypi(packages=_PACKAGES)
     @step
@@ -92,6 +97,9 @@ class DeepSeekFlow(FlowSpec):
             },
             nproc_per_node=1,
         )
+
+        self.results_store.upload(local_path="/tmp/results")
+
         self.next(self.end)
 
     @step

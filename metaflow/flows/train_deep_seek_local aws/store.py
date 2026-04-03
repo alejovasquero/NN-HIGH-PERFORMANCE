@@ -95,3 +95,6 @@ class DataStore(BaseStore):
         print("After tokenization", tokenized_dataset[randint(0, len(dataset))])
 
         return tokenized_dataset
+    
+class ResultsStore(BaseStore):
+    ...

@@ -17,7 +17,7 @@ class ScriptArguments:
 
 class MetaflowBridge(TrainerCallback):
 
-    def __init__(self, filename="training_log.csv"):
+    def __init__(self, filename="/tmp/results/training_log.csv"):
         self.filename = filename
         if not os.path.exists(self.filename):
             with open(self.filename, 'w', newline='') as f:
