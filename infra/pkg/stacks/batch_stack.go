@@ -135,7 +135,7 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 				},
 				InstanceRole: instanceProfile.Ref(),
 				InstanceTypes: &[]*string{
-					pointer.ToString("trn1.2xlarge"),
+					pointer.ToString("g5.2xlarge"),
 				},
 				DesiredvCpus:       pointer.ToFloat64(8),
 				MinvCpus:           pointer.ToFloat64(6),
