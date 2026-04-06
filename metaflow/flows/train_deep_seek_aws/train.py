@@ -17,12 +17,19 @@ class ScriptArguments:
 
 class MetaflowBridge(TrainerCallback):
 
-    def __init__(self, filename="/tmp/results/training_log.csv"):
+    def __init__(self, batch_size: int, filename="/tmp/results/training_log.csv"):
         self.filename = filename
+        self.batch_size = batch_size
+
+        directory = os.path.dirname(self.filename)
+
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+
         if not os.path.exists(self.filename):
             with open(self.filename, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["step", "loss", "learning_rate"])
+                writer.writerow(["step", "loss", "learning_rate", "processed_data"])
 
     def on_log(self, args, state, control, logs=None, **kwargs):
         print("Captured log", logs)
@@ -32,7 +39,8 @@ class MetaflowBridge(TrainerCallback):
                 writer.writerow([
                     state.global_step, 
                     logs["loss"], 
-                    logs.get("learning_rate", 0)
+                    logs.get("learning_rate", 0),
+                    state.global_step * self.batch_size,
                 ])
 
 
@@ -70,7 +78,7 @@ def train_model(script_args: ScriptArguments, trainig_args: SFTConfig) -> None:
         processing_class = tokenizer,
         train_dataset = dataset,
         args = trainig_args,
-        callbacks=[MetaflowBridge()]
+        callbacks=[MetaflowBridge(batch_size=trainig_args.per_device_train_batch_size)],
     )
 
 
@@ -80,14 +88,6 @@ def train_model(script_args: ScriptArguments, trainig_args: SFTConfig) -> None:
         checkpoint_exists = len(checkpoints) > 0
 
     trainer.train(resume_from_checkpoint=checkpoint_exists)
-    trainer.save_model()
-
-    model.save_pretrained_gguf(
-        "model_gguf", 
-        tokenizer, 
-        quantization_method = "q4_k_m"
-    )
-
 
 
 def main():

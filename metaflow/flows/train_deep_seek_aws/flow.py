@@ -1,4 +1,4 @@
-from metaflow import FlowSpec, step, current, torchrun, pypi
+from metaflow import FlowSpec, step, batch, pypi
 import config
 import store
 from gpu_profile import gpu_profile
@@ -8,7 +8,9 @@ _PACKAGES = {
     "transformers": "4.57.1",
     "unsloth": "2025.11.2",
     "tensorboard": "2.20.0",
+    "matplotlib": "3.10.8",
 }
+_DOCKER_IMAGE = "unsloth/unsloth:2026.3.8-pt2.9.0-vllm-0.16.0-cu12.8-studio-release"
 
 class DeepSeekFlow(FlowSpec):
 
@@ -26,15 +28,27 @@ class DeepSeekFlow(FlowSpec):
     
     @property
     def results_store(self) -> store.ResultsStore:
-        return store.ResultsStore(self.data_config.s3_prefix)
+        return store.ResultsStore(self.data_config.results_s3_prefix)
 
 
     @pypi(packages=_PACKAGES)
+    @batch(
+        gpu=1,
+        cpu=8,
+        memory=16000,
+        image=_DOCKER_IMAGE
+    )
     @step
     def start(self):
         self.next(self.load_dataset)
 
     @pypi(packages=_PACKAGES)
+    @batch(
+        gpu=1,
+        cpu=8,
+        memory=16000,
+        image=_DOCKER_IMAGE
+    )
     @step
     def load_dataset(self):
         print("Checking if dataset exists")
@@ -64,6 +78,12 @@ class DeepSeekFlow(FlowSpec):
 
     @gpu_profile()
     @pypi(packages=_PACKAGES)
+    @batch(
+        gpu=1,
+        cpu=8,
+        memory=16000,
+        image=_DOCKER_IMAGE
+    )
     @step
     def train(self):
         print("Downloading tokenized dataset...")
@@ -90,8 +110,8 @@ class DeepSeekFlow(FlowSpec):
                 "per_device_train_batch_size": 4,
                 "num_train_epochs": 1,
                 "gradient_accumulation_steps": 4,
-                "max_steps": 63,
-                "save_steps": 5,
+                "max_steps": 1,
+                "save_steps": 100,
                 "seed": 42,
                 "data_seed": 42,
             },
@@ -102,6 +122,13 @@ class DeepSeekFlow(FlowSpec):
 
         self.next(self.end)
 
+    @pypi(packages=_PACKAGES)
+    @batch(
+        gpu=1,
+        cpu=8,
+        memory=16000,
+        image=_DOCKER_IMAGE
+    )
     @step
     def end(self):
         print("Finished")
