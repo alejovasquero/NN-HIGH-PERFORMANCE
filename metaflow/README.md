@@ -52,3 +52,11 @@ Notes:
     ```
 
 If using nvidia, remember to install cuda and cuda toolkit.
+
+
+CUDA image with metaflow:
+
+Run the following command to build the docker image.
+
+```bash
+docker build -t metaflow-gpu-image .

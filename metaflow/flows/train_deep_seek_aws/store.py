@@ -64,7 +64,7 @@ class BaseStore:
 class DataStore(BaseStore):
 
     def load_from_hugging_face(self, dataset_path: str) -> datasets.Dataset:
-        dataset = datasets.load_dataset(dataset_path, split="train")
+        dataset = datasets.load_dataset(dataset_path, split="train[:1000]")
         return dataset
 
     def format_and_tokenize(self, dataset: datasets.Dataset, tokenizer: Any) -> datasets.Dataset:

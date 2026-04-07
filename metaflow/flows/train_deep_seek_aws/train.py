@@ -50,7 +50,9 @@ def train_model(script_args: ScriptArguments, trainig_args: SFTConfig) -> None:
     print(f"Dataset found with {dataset.features} features")
     print(trainig_args)
 
-    model, tokenizer = FastLanguageModel.from_pretrained(model_name=script_args.model_id, load_in_4bit=True)
+    model, tokenizer = FastLanguageModel.from_pretrained(model_name=script_args.model_id, load_in_4bit=True, max_seq_length=1024)
+    print("Model loaded")
+
     model = FastLanguageModel.get_peft_model(
         model,
         r=16, 
@@ -73,6 +75,7 @@ def train_model(script_args: ScriptArguments, trainig_args: SFTConfig) -> None:
         max_seq_length=2048,
     )
 
+
     trainer = SFTTrainer(
         model = model,
         processing_class = tokenizer,
@@ -80,6 +83,7 @@ def train_model(script_args: ScriptArguments, trainig_args: SFTConfig) -> None:
         args = trainig_args,
         callbacks=[MetaflowBridge(batch_size=trainig_args.per_device_train_batch_size)],
     )
+    print("Trainer created")
 
 
     checkpoint_exists = False
@@ -87,6 +91,7 @@ def train_model(script_args: ScriptArguments, trainig_args: SFTConfig) -> None:
         checkpoints = [d for d in os.listdir(trainig_args.output_dir) if "checkpoint" in d]
         checkpoint_exists = len(checkpoints) > 0
 
+    print("Training started")
     trainer.train(resume_from_checkpoint=checkpoint_exists)
 
 

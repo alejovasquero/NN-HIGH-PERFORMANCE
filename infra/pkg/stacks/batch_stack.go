@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/constructs-go/constructs/v10"
+	"github.com/aws/jsii-runtime-go"
 	"go.uber.org/fx"
 )
 
@@ -117,6 +118,19 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 		nil,
 	)
 
+	launchTemplate := awsec2.NewLaunchTemplate(construct, pointer.ToString("Device"), &awsec2.LaunchTemplateProps{
+		BlockDevices: &[]*awsec2.BlockDevice{
+			{
+				DeviceName: jsii.String("/dev/xvda"), // Standard for Amazon Linux 2
+				Volume: awsec2.BlockDeviceVolume_Ebs(
+					pointer.ToFloat64(100),
+					&awsec2.EbsDeviceOptions{
+						VolumeType: awsec2.EbsDeviceVolumeType_GP3,
+					}),
+			},
+		},
+	})
+
 	computeEnv := awsbatch.NewCfnComputeEnvironment(
 		construct,
 		pointer.ToString("ComputeEnvironment"),
@@ -137,9 +151,13 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 				InstanceTypes: &[]*string{
 					pointer.ToString("g5.2xlarge"),
 				},
-				DesiredvCpus:       pointer.ToFloat64(8),
-				MinvCpus:           pointer.ToFloat64(6),
+				DesiredvCpus:       pointer.ToFloat64(0),
+				MinvCpus:           pointer.ToFloat64(0),
 				AllocationStrategy: pointer.ToString("BEST_FIT_PROGRESSIVE"),
+				LaunchTemplate: &awsbatch.CfnComputeEnvironment_LaunchTemplateSpecificationProperty{
+					LaunchTemplateId: launchTemplate.LaunchTemplateId(),
+					Version:          launchTemplate.LatestVersionNumber(),
+				},
 			},
 			State: pointer.ToString("ENABLED"),
 		},

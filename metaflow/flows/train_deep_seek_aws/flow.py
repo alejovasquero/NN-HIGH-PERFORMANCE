@@ -1,6 +1,7 @@
 from metaflow import FlowSpec, step, batch, pypi
 import config
 import store
+from transformers import AutoTokenizer
 from gpu_profile import gpu_profile
 
 _PACKAGES = {
@@ -10,7 +11,7 @@ _PACKAGES = {
     "tensorboard": "2.20.0",
     "matplotlib": "3.10.8",
 }
-_DOCKER_IMAGE = "unsloth/unsloth:2026.3.8-pt2.9.0-vllm-0.16.0-cu12.8-studio-release"
+_DOCKER_IMAGE = "alejovasquero/cuda-metaflow:latest"
 
 class DeepSeekFlow(FlowSpec):
 
@@ -34,7 +35,7 @@ class DeepSeekFlow(FlowSpec):
     @pypi(packages=_PACKAGES)
     @batch(
         gpu=1,
-        cpu=8,
+        cpu=1,
         memory=16000,
         image=_DOCKER_IMAGE
     )
@@ -42,11 +43,12 @@ class DeepSeekFlow(FlowSpec):
     def start(self):
         self.next(self.load_dataset)
 
+    @gpu_profile()
     @pypi(packages=_PACKAGES)
     @batch(
         gpu=1,
-        cpu=8,
-        memory=16000,
+        cpu=7,
+        memory=31000,
         image=_DOCKER_IMAGE
     )
     @step
@@ -59,10 +61,7 @@ class DeepSeekFlow(FlowSpec):
             print("Dataset downloaded from hugging face...")
 
             print("Loading model tokenizer...")
-            _, tokenizer = FastLanguageModel.from_pretrained(
-                model_name=self.training_config.model_name,
-                load_in_4bit=True,
-            )
+            tokenizer = AutoTokenizer.from_pretrained(self.training_config.model_name)
 
             print("Tokenizing dataset...")
             perfect_blend_dataset = self.data_store.format_and_tokenize(dataset=perfect_blend_dataset, tokenizer=tokenizer)
@@ -80,8 +79,8 @@ class DeepSeekFlow(FlowSpec):
     @pypi(packages=_PACKAGES)
     @batch(
         gpu=1,
-        cpu=8,
-        memory=16000,
+        cpu=7,
+        memory=30000,
         image=_DOCKER_IMAGE
     )
     @step
@@ -93,7 +92,7 @@ class DeepSeekFlow(FlowSpec):
 
         executor = TorchrunSingleNodeMultiGPU()
         executor.run(
-            entrypoint="flows/train_deep_seek_local/train.py",
+            entrypoint="train.py",
             entrypoint_args={
                 "dataset_path": self.data_config.local_path,
                 "model_id": self.training_config.model_name,
@@ -107,7 +106,7 @@ class DeepSeekFlow(FlowSpec):
                 "report_to": "tensorboard",
                 "logging_dir": "/tmp/model/deepseeklitev2history",
                 "logging_steps": 1,
-                "per_device_train_batch_size": 4,
+                "per_device_train_batch_size": 1,
                 "num_train_epochs": 1,
                 "gradient_accumulation_steps": 4,
                 "max_steps": 1,
@@ -125,7 +124,7 @@ class DeepSeekFlow(FlowSpec):
     @pypi(packages=_PACKAGES)
     @batch(
         gpu=1,
-        cpu=8,
+        cpu=1,
         memory=16000,
         image=_DOCKER_IMAGE
     )
