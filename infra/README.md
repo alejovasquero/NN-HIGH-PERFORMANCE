@@ -1,12 +1,29 @@
-# Welcome to your CDK Go project!
+# Infra for metaflow in AWS using CDK
 
-This is a blank project for CDK development with Go.
+## Prerequisites
+- AWS CLI
+- AWS Credentials
+- Docker
+- GO
+- AWS user with permissions to assume cdk roles
 
-The `cdk.json` file tells the CDK toolkit how to execute your app.
+You also can build this folder in devcontainers. Easier!!
 
-## Useful commands
+## Deploy to AWS
+```
+go run cmd/cobra/main.go deploy
+```
 
- * `cdk deploy`      deploy this stack to your default AWS account/region
- * `cdk diff`        compare deployed stack with current state
- * `cdk synth`       emits the synthesized CloudFormation template
- * `go test`         run unit tests
+
+## List metaflow config in AWS
+```
+go run cmd/cobra/main.go metaflow-config
+```
+
+## Destroy all AWS resources
+```
+go run cmd/cobra/main.go destroy
+```
+
+Note:
+- When running metaflow make sure your user has assigned the MetaflowPolicy for running flows
