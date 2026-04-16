@@ -1,13 +1,20 @@
-import unsloth
 import dataclasses
 import datasets
-from unsloth import FastLanguageModel
 from trl import SFTTrainer, SFTConfig
 from transformers import HfArgumentParser
 from transformers import TrainerCallback
-import json
 import os
 import csv
+import torch
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    HfArgumentParser,
+    TrainerCallback,
+    BitsAndBytesConfig
+)
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
 
 @dataclasses.dataclass
 class ScriptArguments:
@@ -45,50 +52,57 @@ class MetaflowBridge(TrainerCallback):
 
 
 
-def train_model(script_args: ScriptArguments, trainig_args: SFTConfig) -> None:
+def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
     dataset = datasets.load_from_disk(script_args.dataset_path)
     print(f"Dataset found with {dataset.features} features")
-    print(trainig_args)
+    print(training_args)
 
-    model, tokenizer = FastLanguageModel.from_pretrained(model_name=script_args.model_id, load_in_4bit=True, max_seq_length=1024)
+
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+    )
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    print("Env variables", os.environ)
+    device_map = {"": local_rank}
+
+    model = AutoModelForCausalLM.from_pretrained(
+        script_args.model_id,
+        quantization_config=bnb_config,
+        device_map=device_map,
+        trust_remote_code=True
+    )
+    tokenizer = AutoTokenizer.from_pretrained(script_args.model_id)
+    tokenizer.pad_token = tokenizer.eos_token
+    model = prepare_model_for_kbit_training(model)
+
+    lora_config = LoraConfig(
+        r=16,
+        lora_alpha=16,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        lora_dropout=0,
+        bias="none",
+        task_type="CAUSAL_LM"
+    )
+    model = get_peft_model(model, lora_config)
+
     print("Model loaded")
 
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=16, 
-        target_modules=[
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj",
-        ],
-        lora_alpha=16,
-        lora_dropout=0, 
-        bias="none", 
-        use_gradient_checkpointing="unsloth", 
-        random_state=3407,
-        use_rslora=False, 
-        loftq_config=None,
-        max_seq_length=2048,
-    )
-
-
     trainer = SFTTrainer(
-        model = model,
-        processing_class = tokenizer,
-        train_dataset = dataset,
-        args = trainig_args,
-        callbacks=[MetaflowBridge(batch_size=trainig_args.per_device_train_batch_size)],
+        model=model,
+        tokenizer=tokenizer,
+        train_dataset=dataset,
+        args=training_args,
+        callbacks=[MetaflowBridge(batch_size=training_args.per_device_train_batch_size)],
     )
     print("Trainer created")
 
 
     checkpoint_exists = False
-    if os.path.exists(trainig_args.output_dir):
-        checkpoints = [d for d in os.listdir(trainig_args.output_dir) if "checkpoint" in d]
+    if os.path.exists(training_args.output_dir):
+        checkpoints = [d for d in os.listdir(training_args.output_dir) if "checkpoint" in d]
         checkpoint_exists = len(checkpoints) > 0
 
     print("Training started")

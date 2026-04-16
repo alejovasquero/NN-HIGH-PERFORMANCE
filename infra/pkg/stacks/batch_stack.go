@@ -71,6 +71,7 @@ func buildInstanceProfile(construct constructs.Construct) awsiam.CfnInstanceProf
 			Path: pointer.ToString("/"),
 			ManagedPolicyArns: &[]any{
 				pointer.ToString("arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"),
+				pointer.ToString("arn:aws:iam::aws:policy/AmazonS3FullAccess"),
 			},
 		},
 	)
@@ -149,7 +150,7 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 				},
 				InstanceRole: instanceProfile.Ref(),
 				InstanceTypes: &[]*string{
-					pointer.ToString("g5.2xlarge"),
+					pointer.ToString("g6e.2xlarge"),
 				},
 				DesiredvCpus:       pointer.ToFloat64(0),
 				MinvCpus:           pointer.ToFloat64(0),
@@ -196,6 +197,19 @@ func buildBatchExecutionRole(construct constructs.Construct) awsiam.Role {
 			),
 			RoleName: pointer.ToString("BatchExecutionRole"),
 		},
+	)
+	role.AddToPolicy(
+		awsiam.NewPolicyStatement(
+			&awsiam.PolicyStatementProps{
+				Effect: awsiam.Effect_ALLOW,
+				Actions: &[]*string{
+					pointer.ToString("ec2:DescribeInstanceStatus"),
+				},
+				Resources: &[]*string{
+					pointer.ToString("*"),
+				},
+			},
+		),
 	)
 
 	role.ApplyRemovalPolicy(awscdk.RemovalPolicy_DESTROY)

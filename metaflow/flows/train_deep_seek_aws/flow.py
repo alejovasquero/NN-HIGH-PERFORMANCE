@@ -1,16 +1,9 @@
-from metaflow import FlowSpec, step, batch, pypi
+from metaflow import FlowSpec, step, batch, torchrun, current, environment
 import config
 import store
 from transformers import AutoTokenizer
 from gpu_profile import gpu_profile
 
-_PACKAGES = {
-    "datasets": "4.3.0",
-    "transformers": "4.57.1",
-    "unsloth": "2025.11.2",
-    "tensorboard": "2.20.0",
-    "matplotlib": "3.10.8",
-}
 _DOCKER_IMAGE = "alejovasquero/cuda-metaflow:latest"
 
 class DeepSeekFlow(FlowSpec):
@@ -32,7 +25,6 @@ class DeepSeekFlow(FlowSpec):
         return store.ResultsStore(self.data_config.results_s3_prefix)
 
 
-    @pypi(packages=_PACKAGES)
     @batch(
         gpu=1,
         cpu=1,
@@ -44,11 +36,10 @@ class DeepSeekFlow(FlowSpec):
         self.next(self.load_dataset)
 
     @gpu_profile()
-    @pypi(packages=_PACKAGES)
     @batch(
         gpu=1,
-        cpu=7,
-        memory=31000,
+        cpu=8,
+        memory=60000,
         image=_DOCKER_IMAGE
     )
     @step
@@ -73,25 +64,25 @@ class DeepSeekFlow(FlowSpec):
         else:
             print("Dataset already found in S3. Skipping re upload")
 
-        self.next(self.train)
+        self.next(self.train, num_parallel=2)
 
     @gpu_profile()
-    @pypi(packages=_PACKAGES)
+    @environment(vars={
+        "AWS_METADATA_SERVICE_TIMEOUT": "1"
+    })
     @batch(
         gpu=1,
         cpu=7,
-        memory=30000,
-        image=_DOCKER_IMAGE
+        memory=60000,
+        image=_DOCKER_IMAGE,
     )
+    @torchrun
     @step
     def train(self):
         print("Downloading tokenized dataset...")
 
         self.data_store.download(local_path=self.data_config.local_path)
-        from metaflow import TorchrunSingleNodeMultiGPU
-
-        executor = TorchrunSingleNodeMultiGPU()
-        executor.run(
+        current.torch.run(
             entrypoint="train.py",
             entrypoint_args={
                 "dataset_path": self.data_config.local_path,
@@ -106,10 +97,10 @@ class DeepSeekFlow(FlowSpec):
                 "report_to": "tensorboard",
                 "logging_dir": "/tmp/model/deepseeklitev2history",
                 "logging_steps": 1,
-                "per_device_train_batch_size": 1,
+                "per_device_train_batch_size": 4,
                 "num_train_epochs": 1,
                 "gradient_accumulation_steps": 4,
-                "max_steps": 1,
+                "max_steps": 3,
                 "save_steps": 100,
                 "seed": 42,
                 "data_seed": 42,
@@ -119,9 +110,12 @@ class DeepSeekFlow(FlowSpec):
 
         self.results_store.upload(local_path="/tmp/results")
 
+        self.next(self.join)
+
+    @step
+    def join(self, inputs):
         self.next(self.end)
 
-    @pypi(packages=_PACKAGES)
     @batch(
         gpu=1,
         cpu=1,

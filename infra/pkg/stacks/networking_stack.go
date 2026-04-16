@@ -68,6 +68,27 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 
 	uiSecurityGroup := uiSecurityGroup(nested_stack, vpc, fargateSecurityGroup)
 
+	vpc.AddGatewayEndpoint(
+		pointer.ToString("S3GatewayEndpoint"),
+		&awsec2.GatewayVpcEndpointOptions{
+			Service: awsec2.GatewayVpcEndpointAwsService_S3(),
+			Subnets: &[]*awsec2.SubnetSelection{
+				{
+					Subnets: &[]awsec2.ISubnet{
+						awsec2.Subnet_FromSubnetAttributes(nested_stack, pointer.ToString("ImportedSubnetA"), &awsec2.SubnetAttributes{
+							SubnetId:     subnetA.AttrSubnetId(),
+							RouteTableId: route.RouteTableId(),
+						}),
+						awsec2.Subnet_FromSubnetAttributes(nested_stack, pointer.ToString("ImportedSubnetB"), &awsec2.SubnetAttributes{
+							SubnetId:     subnetB.AttrSubnetId(),
+							RouteTableId: route.RouteTableId(),
+						}),
+					},
+				},
+			},
+		},
+	)
+
 	return MetaflowNetworkingOutput{
 		Stack:                nested_stack,
 		VPC:                  vpc,
@@ -99,6 +120,7 @@ func metaflowVPC(stack awscdk.Stack) awsec2.Vpc {
 			IpAddresses:         awsec2.IpAddresses_Cidr(&cidr),
 		},
 	)
+
 	return vpc
 }
 
