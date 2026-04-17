@@ -46,8 +46,6 @@ class DeepSeekFlow(FlowSpec):
     def load_dataset(self):
         print("Checking if dataset exists")
         if not self.data_store.already_exists():
-            from unsloth import FastLanguageModel
-
             perfect_blend_dataset = self.data_store.load_from_hugging_face(dataset_path=self.data_config.hugging_face_name)
             print("Dataset downloaded from hugging face...")
 
@@ -68,7 +66,9 @@ class DeepSeekFlow(FlowSpec):
 
     @gpu_profile()
     @environment(vars={
-        "AWS_METADATA_SERVICE_TIMEOUT": "1"
+        "NCCL_DEBUG": "INFO",
+        "NCCL_SOCKET_IFNAME": "eth0",
+        "TORCH_DISTRIBUTED_DEBUG": "INFO",
     })
     @batch(
         gpu=1,
@@ -80,6 +80,7 @@ class DeepSeekFlow(FlowSpec):
     @step
     def train(self):
         print("Downloading tokenized dataset...")
+        node_index = current.parallel.node_index
 
         self.data_store.download(local_path=self.data_config.local_path)
         current.torch.run(
@@ -89,18 +90,18 @@ class DeepSeekFlow(FlowSpec):
                 "model_id": self.training_config.model_name,
                 "bf16": True,
                 "learning_rate": 2e-4,
-                "output_dir": "/tmp/model/deepseekv2lite",
+                "output_dir": f"/tmp/model/deepseekv2lite_{node_index}",
                 "overwrite_output_dir": True,
                 "warmup_steps": 5,
                 "weight_decay": 0.01, 
                 "packing": False,
-                "report_to": "tensorboard",
-                "logging_dir": "/tmp/model/deepseeklitev2history",
+                "logging_dir": f"/tmp/model/deepseeklitev2history_{node_index}",
                 "logging_steps": 1,
+                "report_to": "none",
                 "per_device_train_batch_size": 4,
                 "num_train_epochs": 1,
                 "gradient_accumulation_steps": 4,
-                "max_steps": 3,
+                "max_steps": 125,
                 "save_steps": 100,
                 "seed": 42,
                 "data_seed": 42,
@@ -112,6 +113,12 @@ class DeepSeekFlow(FlowSpec):
 
         self.next(self.join)
 
+    @batch(
+        gpu=1,
+        cpu=1,
+        memory=16000,
+        image=_DOCKER_IMAGE
+    )
     @step
     def join(self, inputs):
         self.next(self.end)

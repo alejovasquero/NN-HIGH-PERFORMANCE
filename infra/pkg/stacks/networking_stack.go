@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/constructs-go/constructs/v10"
+	"github.com/aws/jsii-runtime-go"
 	"go.uber.org/fx"
 )
 
@@ -24,6 +25,7 @@ type MetaflowNetworkingOutput struct {
 	Route                awsec2.CfnRoute                `name:"metaflow_route"`
 	SubnetA              awsec2.CfnSubnet               `name:"metaflow_subnet_a"`
 	SubnetB              awsec2.CfnSubnet               `name:"metaflow_subnet_b"`
+	SubnetC              awsec2.CfnSubnet               `name:"metaflow_subnet_c"`
 	FargateSecurityGroup awsec2.SecurityGroup           `name:"fargate_security_group"`
 	DBSecurityGroup      awsec2.SecurityGroup           `name:"db_security_group"`
 	UISecurityGroup      awsec2.SecurityGroup           `name:"ui_security_group"`
@@ -44,6 +46,7 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 
 	subnetA := metaflowSubnetA(nested_stack, vpc)
 	subnetB := metaflowSubnetB(nested_stack, vpc)
+	subnetC := metaflowSubnetC(nested_stack, vpc, subnetB)
 
 	iGateway := metaflowVPCInternetGateway(nested_stack)
 	gatewayAttachment := internetGatewayAttachment(nested_stack, vpc, iGateway)
@@ -61,7 +64,6 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 		subnetB,
 		routeTable,
 	)
-
 	fargateSecurityGroup := fargateSecurityGroup(nested_stack, vpc)
 
 	dbSecurityGroup := dbSecurityGroup(nested_stack, vpc, fargateSecurityGroup)
@@ -83,6 +85,10 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 							SubnetId:     subnetB.AttrSubnetId(),
 							RouteTableId: route.RouteTableId(),
 						}),
+						awsec2.Subnet_FromSubnetAttributes(nested_stack, pointer.ToString("ImportedSubnetC"), &awsec2.SubnetAttributes{
+							SubnetId:     subnetC.AttrSubnetId(),
+							RouteTableId: route.RouteTableId(),
+						}),
 					},
 				},
 			},
@@ -98,6 +104,7 @@ func BuildMetaflowNetworkingStack(input MetaflowNetworkingInput) MetaflowNetwork
 		Route:                route,
 		SubnetA:              subnetA,
 		SubnetB:              subnetB,
+		SubnetC:              subnetC,
 		FargateSecurityGroup: fargateSecurityGroup,
 		DBSecurityGroup:      dbSecurityGroup,
 		UISecurityGroup:      uiSecurityGroup,
@@ -168,6 +175,53 @@ func metaflowSubnetB(stack awscdk.Stack, vpc awsec2.Vpc) awsec2.CfnSubnet {
 	)
 
 	return subnetB
+}
+
+func metaflowSubnetC(stack awscdk.Stack, vpc awsec2.Vpc, publicSubnet awsec2.CfnSubnet) awsec2.CfnSubnet {
+	subnetCCIDR := "10.20.2.0/24"
+	subnetCName := "SubnetC"
+	subnetC := awsec2.NewCfnSubnet(
+		stack,
+		&subnetCName,
+		&awsec2.CfnSubnetProps{
+			VpcId:               vpc.VpcId(),
+			CidrBlock:           &subnetCCIDR,
+			AvailabilityZone:    (*stack.AvailabilityZones())[2],
+			MapPublicIpOnLaunch: pointer.ToBool(false),
+			Tags: &[]*awscdk.CfnTag{
+				{
+					Key:   pointer.ToString("Name"),
+					Value: &subnetCName,
+				},
+			},
+		},
+	)
+
+	eip := awsec2.NewCfnEIP(stack, pointer.ToString("NatEIP"), &awsec2.CfnEIPProps{
+		Domain: pointer.ToString("vpc"),
+	})
+
+	natGw := awsec2.NewCfnNatGateway(stack, jsii.String("NatGateway"), &awsec2.CfnNatGatewayProps{
+		AllocationId: eip.AttrAllocationId(),
+		SubnetId:     publicSubnet.AttrSubnetId(),
+	})
+
+	routeTable := awsec2.NewCfnRouteTable(stack, jsii.String("SubnetCRouteTable"), &awsec2.CfnRouteTableProps{
+		VpcId: vpc.VpcId(),
+	})
+
+	awsec2.NewCfnRoute(stack, jsii.String("SubnetCRoute"), &awsec2.CfnRouteProps{
+		RouteTableId:         routeTable.Ref(),
+		DestinationCidrBlock: jsii.String("0.0.0.0/0"),
+		NatGatewayId:         natGw.Ref(),
+	})
+
+	awsec2.NewCfnSubnetRouteTableAssociation(stack, jsii.String("SubnetCAssociation"), &awsec2.CfnSubnetRouteTableAssociationProps{
+		RouteTableId: routeTable.Ref(),
+		SubnetId:     subnetC.Ref(),
+	})
+
+	return subnetC
 }
 
 func metaflowVPCInternetGateway(stack awscdk.Stack) awsec2.CfnInternetGateway {

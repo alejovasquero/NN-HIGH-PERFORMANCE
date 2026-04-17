@@ -13,6 +13,7 @@ from transformers import (
     TrainerCallback,
     BitsAndBytesConfig
 )
+
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 
@@ -24,8 +25,8 @@ class ScriptArguments:
 
 class MetaflowBridge(TrainerCallback):
 
-    def __init__(self, batch_size: int, filename="/tmp/results/training_log.csv"):
-        self.filename = filename
+    def __init__(self, batch_size: int, rank: int, filename="/tmp/results/training_log.csv"):
+        self.filename = filename.replace(".csv", f"_{rank}.csv")
         self.batch_size = batch_size
 
         directory = os.path.dirname(self.filename)
@@ -75,7 +76,6 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
         trust_remote_code=True
     )
     tokenizer = AutoTokenizer.from_pretrained(script_args.model_id)
-    tokenizer.pad_token = tokenizer.eos_token
     model = prepare_model_for_kbit_training(model)
 
     lora_config = LoraConfig(
@@ -92,12 +92,20 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=dataset,
         args=training_args,
-        callbacks=[MetaflowBridge(batch_size=training_args.per_device_train_batch_size)],
+        callbacks=[MetaflowBridge(batch_size=training_args.per_device_train_batch_size, rank=os.environ.get("RANK"))],
     )
     print("Trainer created")
+
+    train_dataloader = trainer.get_train_dataloader()
+    num_batches = len(train_dataloader)
+    batch_size = training_args.per_device_train_batch_size
+
+    print(f"--- NODE {os.environ.get('RANK')} CHECK ---")
+    print(f"Total batches on this node: {num_batches}")
+    print(f"Total records on this node (approx): {num_batches * batch_size}")
 
 
     checkpoint_exists = False

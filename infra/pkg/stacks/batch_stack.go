@@ -16,8 +16,7 @@ type BatchStackInput struct {
 	fx.In
 	Account commons.Account
 	VPC     awsec2.Vpc       `name:"metaflow_vpc"`
-	SubnetA awsec2.CfnSubnet `name:"metaflow_subnet_a"`
-	SubnetB awsec2.CfnSubnet `name:"metaflow_subnet_b"`
+	SubnetC awsec2.CfnSubnet `name:"metaflow_subnet_c"`
 }
 
 type BatchStackOutput struct {
@@ -113,9 +112,29 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 		nil,
 	)
 	securityGroup.AddIngressRule(
+		securityGroup,
+		awsec2.Port_AllTraffic(),
+		pointer.ToString("Allow internal communication"),
+		nil,
+	)
+	securityGroup.AddIngressRule(
 		awsec2.Peer_AnyIpv4(),
 		awsec2.Port_AllTraffic(),
 		pointer.ToString("All trafic ingress"),
+		nil,
+	)
+
+	securityGroup.AddEgressRule(
+		securityGroup,
+		awsec2.Port_AllTraffic(),
+		pointer.ToString("Allow internal communication"),
+		nil,
+	)
+
+	securityGroup.AddIngressRule(
+		awsec2.Peer_AnyIpv4(),
+		awsec2.Port_SSH(),
+		pointer.ToString("SSH CONNECTION"),
 		nil,
 	)
 
@@ -146,7 +165,7 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 				},
 				Subnets: &[]*string{
 					// input.SubnetA.Ref(),
-					input.SubnetB.Ref(),
+					input.SubnetC.Ref(),
 				},
 				InstanceRole: instanceProfile.Ref(),
 				InstanceTypes: &[]*string{
@@ -161,6 +180,10 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 				},
 			},
 			State: pointer.ToString("ENABLED"),
+			UpdatePolicy: &awsbatch.CfnComputeEnvironment_UpdatePolicyProperty{
+				TerminateJobsOnUpdate:      pointer.ToBool(false),
+				JobExecutionTimeoutMinutes: pointer.ToFloat64(30),
+			},
 		},
 	)
 
