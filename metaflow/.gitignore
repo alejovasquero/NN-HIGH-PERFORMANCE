@@ -1,2 +1,3 @@
 virtualenv/
 .metaflow/
+**/unsloth_compiled_cache/
