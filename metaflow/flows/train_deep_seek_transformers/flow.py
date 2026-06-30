@@ -1,10 +1,17 @@
-from metaflow import FlowSpec, step, batch, torchrun, current, environment
+from metaflow import FlowSpec, step, batch, torchrun, current, environment, pypi
 import config
 import store
 from transformers import AutoTokenizer
 from gpu_profile import gpu_profile
 
 _DOCKER_IMAGE = "alejovasquero/cuda-metaflow:latest"
+_PACKAGES = {
+    "datasets": "4.3.0",
+    "transformers": "4.57.1",
+    "unsloth": "2025.11.2",
+    "tensorboard": "2.20.0",
+    "matplotlib": "3.10.8",
+}
 
 class DeepSeekFlow(FlowSpec):
 
@@ -25,23 +32,13 @@ class DeepSeekFlow(FlowSpec):
         return store.ResultsStore(self.data_config.results_s3_prefix)
 
 
-    @batch(
-        gpu=1,
-        cpu=1,
-        memory=16000,
-        image=_DOCKER_IMAGE
-    )
+    @pypi(packages=_PACKAGES)
     @step
     def start(self):
         self.next(self.load_dataset)
 
     @gpu_profile()
-    @batch(
-        gpu=1,
-        cpu=8,
-        memory=60000,
-        image=_DOCKER_IMAGE
-    )
+    @pypi(packages=_PACKAGES)
     @step
     def load_dataset(self):
         print("Checking if dataset exists")
@@ -62,41 +59,33 @@ class DeepSeekFlow(FlowSpec):
         else:
             print("Dataset already found in S3. Skipping re upload")
 
-        self.next(self.train, num_parallel=2)
+        self.next(self.train)
 
     @gpu_profile()
-    @environment(vars={
-        "NCCL_DEBUG": "INFO",
-        "NCCL_DEBUG_SUBSYS": "COLL",
-        "NCCL_SOCKET_IFNAME": "eth0",
-        "TORCH_DISTRIBUTED_DEBUG": "INFO",
-    })
-    @batch(
-        gpu=1,
-        cpu=7,
-        memory=60000,
-        image=_DOCKER_IMAGE,
-    )
-    @torchrun
+    @pypi(packages=_PACKAGES)
     @step
     def train(self):
         print("Downloading tokenized dataset...")
-        node_index = current.parallel.node_index
 
         self.data_store.download(local_path=self.data_config.local_path)
-        current.torch.run(
-            entrypoint="train.py",
+
+        from metaflow import TorchrunSingleNodeMultiGPU
+
+        executor = TorchrunSingleNodeMultiGPU()
+
+        executor.run(
+            entrypoint="flows/train_deep_seek_transformers/train.py",
             entrypoint_args={
                 "dataset_path": self.data_config.local_path,
                 "model_id": self.training_config.model_name,
                 "bf16": True,
                 "learning_rate": 2e-4,
-                "output_dir": f"/tmp/model/deepseekv2lite_{node_index}",
+                "output_dir": f"/tmp/model/deepseekv2lite_{1}",
                 "overwrite_output_dir": True,
                 "warmup_steps": 5,
                 "weight_decay": 0.01, 
                 "packing": False,
-                "logging_dir": f"/tmp/model/deepseeklitev2history_{node_index}",
+                "logging_dir": f"/tmp/model/deepseeklitev2history_{1}",
                 "logging_steps": 1,
                 "report_to": "none",
                 "per_device_train_batch_size": 4,
@@ -112,24 +101,8 @@ class DeepSeekFlow(FlowSpec):
 
         self.results_store.upload(local_path="/tmp/results")
 
-        self.next(self.join)
-
-    @batch(
-        gpu=1,
-        cpu=1,
-        memory=16000,
-        image=_DOCKER_IMAGE
-    )
-    @step
-    def join(self, inputs):
         self.next(self.end)
 
-    @batch(
-        gpu=1,
-        cpu=1,
-        memory=16000,
-        image=_DOCKER_IMAGE
-    )
     @step
     def end(self):
         print("Finished")

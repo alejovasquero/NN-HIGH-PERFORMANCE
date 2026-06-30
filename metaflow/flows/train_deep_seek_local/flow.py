@@ -91,7 +91,7 @@ class DeepSeekFlow(FlowSpec):
                 "per_device_train_batch_size": 1,
                 "num_train_epochs": 1,
                 "gradient_accumulation_steps": 4,
-                "max_steps": 1000,
+                "max_steps": 1,
                 "save_steps": 100,
                 "seed": 42,
                 "data_seed": 42,

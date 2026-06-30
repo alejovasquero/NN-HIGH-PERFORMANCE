@@ -81,13 +81,17 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
     lora_config = LoraConfig(
         r=16,
         lora_alpha=16,
-        target_modules="all-linear",
+        target_modules=[
+            "q_proj",
+            "kv_a_proj_with_mqa", "kv_b_proj",
+            "o_proj",
+            "gate_proj", "up_proj", "down_proj",
+        ],
         lora_dropout=0,
         bias="none",
         task_type="CAUSAL_LM"
     )
     model = get_peft_model(model, lora_config)
-
     print("Model loaded")
 
     trainer = SFTTrainer(
@@ -97,7 +101,11 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
         args=training_args,
         callbacks=[MetaflowBridge(batch_size=training_args.per_device_train_batch_size, rank=os.environ.get("RANK"))],
     )
-    print("Trainer created")
+
+    # SFTTrainer.__init__ re-freezes all params; restore LoRA trainability after it
+    for name, param in model.named_parameters():
+        if "lora_" in name:
+            param.requires_grad_(True)
 
     train_dataloader = trainer.get_train_dataloader()
     num_batches = len(train_dataloader)
@@ -106,7 +114,6 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
     print(f"--- NODE {os.environ.get('RANK')} CHECK ---")
     print(f"Total batches on this node: {num_batches}")
     print(f"Total records on this node (approx): {num_batches * batch_size}")
-
 
     checkpoint_exists = False
     if os.path.exists(training_args.output_dir):
