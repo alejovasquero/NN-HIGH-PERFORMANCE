@@ -105,6 +105,46 @@ class DataStore(BaseStore):
         print(f"Code split -> train: {len(train_dataset)}, val: {len(val_dataset)}")
         return train_dataset, val_dataset
 
+    def format_prompt_completion(self, dataset: datasets.Dataset, tokenizer: Any) -> datasets.Dataset:
+        """Build `text` + `prompt` + `completion` columns from each conversation.
+
+        - `prompt`/`completion` are the conversational split (user turns vs the
+          assistant's final turn). SFTTrainer uses these for completion-only
+          loss: the prompt is masked and perplexity is measured ONLY over the
+          assistant's completion. The eval split is single-turn, so this is
+          exact assistant-only scoring.
+        - `text` is the full chat-template rendering, kept for inspection.
+
+        IMPORTANT: `text` must be dropped before handing the dataset to
+        SFTTrainer with `completion_only_loss=True` (its collator routes any
+        dataset containing `text` to language-modeling mode and raises). That
+        drop happens in perplexity.py.
+        """
+        dataset = standardize_sharegpt(dataset)
+
+        def _split(sample: Any) -> dict:
+            messages = sample["conversations"]
+            text = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False
+            )
+            return {
+                "text": text,
+                "prompt": messages[:-1],
+                "completion": [messages[-1]],
+            }
+
+        pc_dataset = dataset.map(
+            _split,
+            batched=False,
+            keep_in_memory=True,
+            remove_columns=list(dataset.features),
+        )
+        sample_idx = 0
+        print("Sample text:", pc_dataset[sample_idx]["text"])
+        print("Sample prompt:", pc_dataset[sample_idx]["prompt"])
+        print("Sample completion:", pc_dataset[sample_idx]["completion"])
+        return pc_dataset
+
     def format_and_tokenize(self, dataset: datasets.Dataset, tokenizer: Any) -> datasets.Dataset:
         def _format_conversation(sample: Any) -> datasets.Dataset:
             text = tokenizer.apply_chat_template(

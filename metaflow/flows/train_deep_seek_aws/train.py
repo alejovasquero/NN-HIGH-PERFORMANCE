@@ -3,6 +3,8 @@ import datasets
 from trl import SFTTrainer, SFTConfig
 from transformers import HfArgumentParser
 from transformers import TrainerCallback
+import json
+import math
 import os
 import csv
 import torch
@@ -21,6 +23,7 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 class ScriptArguments:
     model_id: str
     dataset_path: str
+    eval_dataset_path: str
 
 
 class MetaflowBridge(TrainerCallback):
@@ -53,9 +56,22 @@ class MetaflowBridge(TrainerCallback):
 
 
 
+def _load_prompt_completion(path: str) -> datasets.Dataset:
+    # Drop `text`: with completion_only_loss=True the SFTTrainer collator routes
+    # any dataset containing `text` to language-modeling mode and raises. Keep
+    # only prompt/completion so the loss is masked to the assistant turn.
+    ds = datasets.load_from_disk(path)
+    if "text" in ds.column_names:
+        ds = ds.select_columns(["prompt", "completion"])
+    return ds
+
+
 def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
-    dataset = datasets.load_from_disk(script_args.dataset_path)
-    print(f"Dataset found with {dataset.features} features")
+    dataset = _load_prompt_completion(script_args.dataset_path)
+    print(f"Train dataset found with {dataset.features} features")
+
+    eval_dataset = _load_prompt_completion(script_args.eval_dataset_path)
+    print(f"Eval dataset found with {len(eval_dataset)} examples")
     print(training_args)
 
 
@@ -94,6 +110,7 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
         model=model,
         processing_class=tokenizer,
         train_dataset=dataset,
+        eval_dataset=eval_dataset,
         args=training_args,
         callbacks=[MetaflowBridge(batch_size=training_args.per_device_train_batch_size, rank=os.environ.get("RANK"))],
     )
@@ -116,6 +133,27 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
     print("Training started")
     model.print_trainable_parameters()
     trainer.train(resume_from_checkpoint=checkpoint_exists)
+
+    # Final assistant-only perplexity, computed ONCE after training (no periodic
+    # eval, so it adds no per-step overhead). perplexity = exp(eval_loss).
+    print("Computing final perplexity on the eval split...")
+    metrics = trainer.evaluate()
+    eval_loss = metrics["eval_loss"]
+    perplexity = math.exp(eval_loss)
+    print(f"FINAL  eval_loss={eval_loss:.6f}  perplexity={perplexity:.6f}")
+
+    if trainer.is_world_process_zero():
+        os.makedirs("/tmp/results", exist_ok=True)
+        result = {
+            "model_id": script_args.model_id,
+            "eval_dataset_path": script_args.eval_dataset_path,
+            "eval_loss": eval_loss,
+            "perplexity": perplexity,
+            "num_sequences": len(eval_dataset),
+            "max_length": training_args.max_length,
+        }
+        with open("/tmp/results/perplexity.json", "w") as f:
+            json.dump(result, f, indent=2)
 
 
 def main():

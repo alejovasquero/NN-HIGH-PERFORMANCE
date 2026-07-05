@@ -35,29 +35,48 @@ class DeepSeekFlow(FlowSpec):
     @pypi(packages=_PACKAGES)
     @step
     def start(self):
-        self.next(self.load_dataset)
+        self.next(self.prepare_code_dataset)
 
     @gpu_profile()
     @pypi(packages=_PACKAGES)
     @step
-    def load_dataset(self):
-        print("Checking if dataset exists")
-        if not self.data_store.already_exists():
-            perfect_blend_dataset = self.data_store.load_from_hugging_face(dataset_path=self.data_config.hugging_face_name)
-            print("Dataset downloaded from hugging face...")
+    def prepare_code_dataset(self):
+        """Build a deterministic code-question train/val split and leave it in S3.
+
+        Filters Perfect Blend to the code source, carves a disjoint
+        4000-train / 400-val split (fixed seed), tokenizes each split, and
+        uploads them to S3 under `code/train` and `code/validation`.
+        """
+        cfg = self.data_config
+        train_exists = self.data_store.already_exists(store_key=cfg.train_store_key)
+        val_exists = self.data_store.already_exists(store_key=cfg.val_store_key)
+
+        if train_exists and val_exists:
+            print("Code train/val splits already in S3. Skipping re upload")
+        else:
+            print("Building deterministic code split from Perfect Blend...")
+            train_dataset, val_dataset = self.data_store.load_code_split(
+                dataset_path=cfg.hugging_face_name,
+                code_source=cfg.code_source,
+                n_train=cfg.code_n_train,
+                n_val=cfg.code_n_val,
+                seed=cfg.code_seed,
+            )
 
             print("Loading model tokenizer...")
             tokenizer = AutoTokenizer.from_pretrained(self.training_config.model_name)
 
-            print("Tokenizing dataset...")
-            perfect_blend_dataset = self.data_store.format_and_tokenize(dataset=perfect_blend_dataset, tokenizer=tokenizer)
-
-            # chunk and pack the dataset, whatever that means
-            print("Uploading tokenized dataset to S3...")
-            perfect_blend_dataset.save_to_disk(self.data_config.local_path)
-            self.data_store.upload(local_path=self.data_config.local_path)
-        else:
-            print("Dataset already found in S3. Skipping re upload")
+            for split_name, split_ds, local_path, store_key in (
+                ("train", train_dataset, cfg.train_local_path, cfg.train_store_key),
+                ("validation", val_dataset, cfg.val_local_path, cfg.val_store_key),
+            ):
+                print(f"Tokenizing {split_name} split ({len(split_ds)} examples)...")
+                tokenized = self.data_store.format_and_tokenize(
+                    dataset=split_ds, tokenizer=tokenizer
+                )
+                print(f"Uploading {split_name} split to S3 ({store_key})...")
+                tokenized.save_to_disk(local_path)
+                self.data_store.upload(local_path=local_path, store_key=store_key)
 
         self.next(self.train)
 
@@ -65,9 +84,12 @@ class DeepSeekFlow(FlowSpec):
     @pypi(packages=_PACKAGES)
     @step
     def train(self):
-        print("Downloading tokenized dataset...")
+        print("Downloading tokenized code train split...")
 
-        self.data_store.download(local_path=self.data_config.local_path)
+        self.data_store.download(
+            local_path=self.data_config.train_local_path,
+            store_key=self.data_config.train_store_key,
+        )
 
         from metaflow import TorchrunSingleNodeMultiGPU
 
@@ -76,7 +98,7 @@ class DeepSeekFlow(FlowSpec):
         executor.run(
             entrypoint="flows/train_deep_seek_transformers/train.py",
             entrypoint_args={
-                "dataset_path": self.data_config.local_path,
+                "dataset_path": self.data_config.train_local_path,
                 "model_id": self.training_config.model_name,
                 "bf16": True,
                 "learning_rate": 2e-4,
@@ -95,6 +117,7 @@ class DeepSeekFlow(FlowSpec):
                 "save_steps": 100,
                 "seed": 42,
                 "data_seed": 42,
+                "max_seq_length": 512,
             },
             nproc_per_node=1,
         )

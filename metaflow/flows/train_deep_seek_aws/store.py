@@ -1,5 +1,6 @@
-from typing import Any
+from typing import Any, Tuple
 import os
+import random
 import shutil
 from metaflow import S3
 from random import randint
@@ -66,6 +67,74 @@ class DataStore(BaseStore):
     def load_from_hugging_face(self, dataset_path: str) -> datasets.Dataset:
         dataset = datasets.load_dataset(dataset_path, split="train[:4000]")
         return dataset
+
+    def load_code_split(
+        self,
+        dataset_path: str,
+        code_source: str,
+        n_train: int,
+        n_val: int,
+        seed: int,
+    ) -> Tuple[datasets.Dataset, datasets.Dataset]:
+        """Deterministically carve a code-question train/validation split.
+
+        Keeps only examples whose `source` is `code_source`, shuffles their
+        indices with a fixed seed, and slices two DISJOINT splits. Same args +
+        seed => byte-identical rows (matches the transformers/perplexity flows).
+        """
+        dataset = datasets.load_dataset(dataset_path, split="train")
+        code_indices = [
+            i for i, s in enumerate(dataset["source"]) if s == code_source
+        ]
+        print(f"Found {len(code_indices)} code examples for source {code_source}")
+
+        needed = n_train + n_val
+        if len(code_indices) < needed:
+            raise ValueError(
+                f"Not enough code examples: need {needed}, have {len(code_indices)}"
+            )
+
+        rng = random.Random(seed)
+        rng.shuffle(code_indices)
+        train_indices = sorted(code_indices[:n_train])
+        val_indices = sorted(code_indices[n_train : n_train + n_val])
+        assert set(train_indices).isdisjoint(val_indices), "train/val overlap!"
+
+        train_dataset = dataset.select(train_indices)
+        val_dataset = dataset.select(val_indices)
+        print(f"Code split -> train: {len(train_dataset)}, val: {len(val_dataset)}")
+        return train_dataset, val_dataset
+
+    def format_prompt_completion(self, dataset: datasets.Dataset, tokenizer: Any) -> datasets.Dataset:
+        """Split each conversation into `prompt` + `completion` (conversational).
+
+        SFTTrainer uses this format for completion-only loss: the prompt (user
+        turns) is masked, so both training and the final perplexity are scored
+        ONLY over the assistant's completion. The `text` column is kept for
+        inspection and MUST be dropped before the SFTTrainer (train.py does it).
+        """
+        dataset = standardize_sharegpt(dataset)
+
+        def _split(sample: Any) -> dict:
+            messages = sample["conversations"]
+            text = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False
+            )
+            return {
+                "text": text,
+                "prompt": messages[:-1],
+                "completion": [messages[-1]],
+            }
+
+        pc_dataset = dataset.map(
+            _split,
+            batched=False,
+            keep_in_memory=True,
+            remove_columns=list(dataset.features),
+        )
+        print("Sample prompt:", pc_dataset[0]["prompt"])
+        print("Sample completion:", pc_dataset[0]["completion"])
+        return pc_dataset
 
     def format_and_tokenize(self, dataset: datasets.Dataset, tokenizer: Any) -> datasets.Dataset:
         def _format_conversation(sample: Any) -> datasets.Dataset:

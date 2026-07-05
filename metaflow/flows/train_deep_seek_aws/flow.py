@@ -33,7 +33,7 @@ class DeepSeekFlow(FlowSpec):
     )
     @step
     def start(self):
-        self.next(self.load_dataset)
+        self.next(self.prepare_code_dataset)
 
     @gpu_profile()
     @batch(
@@ -43,24 +43,41 @@ class DeepSeekFlow(FlowSpec):
         image=_DOCKER_IMAGE
     )
     @step
-    def load_dataset(self):
-        print("Checking if dataset exists")
-        if not self.data_store.already_exists():
-            perfect_blend_dataset = self.data_store.load_from_hugging_face(dataset_path=self.data_config.hugging_face_name)
-            print("Dataset downloaded from hugging face...")
+    def prepare_code_dataset(self):
+        """Build the deterministic code split as prompt/completion and store it.
+
+        Both train (4000) and eval (400) are uploaded to S3 in prompt/completion
+        format so training is completion-only and the final perplexity is
+        assistant-only (comparable to the base perplexity flow).
+        """
+        cfg = self.data_config
+        train_exists = self.data_store.already_exists(store_key=cfg.train_pc_store_key)
+        val_exists = self.data_store.already_exists(store_key=cfg.val_pc_store_key)
+
+        if train_exists and val_exists:
+            print("Code train/val prompt-completion splits already in S3. Skipping")
+        else:
+            print("Building deterministic code split from Perfect Blend...")
+            train_dataset, val_dataset = self.data_store.load_code_split(
+                dataset_path=cfg.hugging_face_name,
+                code_source=cfg.code_source,
+                n_train=cfg.code_n_train,
+                n_val=cfg.code_n_val,
+                seed=cfg.code_seed,
+            )
 
             print("Loading model tokenizer...")
             tokenizer = AutoTokenizer.from_pretrained(self.training_config.model_name)
 
-            print("Tokenizing dataset...")
-            perfect_blend_dataset = self.data_store.format_and_tokenize(dataset=perfect_blend_dataset, tokenizer=tokenizer)
-
-            # chunk and pack the dataset, whatever that means
-            print("Uploading tokenized dataset to S3...")
-            perfect_blend_dataset.save_to_disk(self.data_config.local_path)
-            self.data_store.upload(local_path=self.data_config.local_path)
-        else:
-            print("Dataset already found in S3. Skipping re upload")
+            for name, split_ds, local_path, store_key in (
+                ("train", train_dataset, cfg.train_pc_local_path, cfg.train_pc_store_key),
+                ("validation", val_dataset, cfg.val_pc_local_path, cfg.val_pc_store_key),
+            ):
+                print(f"Formatting {name} split to prompt/completion ({len(split_ds)} examples)...")
+                pc = self.data_store.format_prompt_completion(dataset=split_ds, tokenizer=tokenizer)
+                pc.save_to_disk(local_path)
+                print(f"Uploading {name} split to S3 ({store_key})...")
+                self.data_store.upload(local_path=local_path, store_key=store_key)
 
         self.next(self.train, num_parallel=2)
 
@@ -80,22 +97,29 @@ class DeepSeekFlow(FlowSpec):
     @torchrun
     @step
     def train(self):
-        print("Downloading tokenized dataset...")
+        print("Downloading prompt-completion train/val splits...")
         node_index = current.parallel.node_index
+        cfg = self.data_config
 
-        self.data_store.download(local_path=self.data_config.local_path)
+        self.data_store.download(local_path=cfg.train_pc_local_path, store_key=cfg.train_pc_store_key)
+        self.data_store.download(local_path=cfg.val_pc_local_path, store_key=cfg.val_pc_store_key)
         current.torch.run(
             entrypoint="train.py",
             entrypoint_args={
-                "dataset_path": self.data_config.local_path,
+                "dataset_path": cfg.train_pc_local_path,
+                "eval_dataset_path": cfg.val_pc_local_path,
                 "model_id": self.training_config.model_name,
                 "bf16": True,
                 "learning_rate": 2e-4,
                 "output_dir": f"/tmp/model/deepseekv2lite_{node_index}",
                 "overwrite_output_dir": True,
                 "warmup_steps": 5,
-                "weight_decay": 0.01, 
+                "weight_decay": 0.01,
                 "packing": False,
+                # Completion-only: mask the prompt, train + score only the
+                # assistant completion. Perplexity is computed once at the end.
+                "completion_only_loss": True,
+                "max_length": cfg.eval_max_length,
                 "logging_dir": f"/tmp/model/deepseeklitev2history_{node_index}",
                 "logging_steps": 1,
                 "report_to": "none",

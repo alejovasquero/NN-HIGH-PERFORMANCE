@@ -80,14 +80,12 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
 
     lora_config = LoraConfig(
         r=16,
-        lora_alpha=16,
+        lora_alpha=32,
         target_modules=[
-            "q_proj",
-            "kv_a_proj_with_mqa", "kv_b_proj",
-            "o_proj",
-            "gate_proj", "up_proj", "down_proj",
+            "q_proj", "k_proj",
+            "v_proj", "o_proj",  
         ],
-        lora_dropout=0,
+        lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM"
     )
