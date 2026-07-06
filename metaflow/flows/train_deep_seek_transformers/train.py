@@ -55,6 +55,11 @@ class MetaflowBridge(TrainerCallback):
 
 def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
     dataset = datasets.load_from_disk(script_args.dataset_path)
+    # Drop `text`: with completion_only_loss=True the SFTTrainer collator routes
+    # any dataset containing `text` to language-modeling mode and raises. Keep
+    # only prompt/completion so training is masked to the assistant turn.
+    if "text" in dataset.column_names:
+        dataset = dataset.select_columns(["prompt", "completion"])
     print(f"Dataset found with {dataset.features} features")
     print(training_args)
 
@@ -82,8 +87,15 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
         r=16,
         lora_alpha=32,
         target_modules=[
-            "q_proj", "k_proj",
-            "v_proj", "o_proj",  
+            "q_proj", 
+            "kv_a_proj_with_mqa", 
+            "kv_b_proj", 
+            "o_proj",
+            
+            # --- Módulos del MLP / Expertos (MoE) ---
+            "gate_proj", 
+            "up_proj", 
+            "down_proj"
         ],
         lora_dropout=0.05,
         bias="none",

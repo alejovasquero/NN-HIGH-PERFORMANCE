@@ -41,21 +41,20 @@ class DeepSeekFlow(FlowSpec):
     @pypi(packages=_PACKAGES)
     @step
     def prepare_code_dataset(self):
-        """Build a deterministic code-question train/val split and leave it in S3.
+        """Build the deterministic code TRAIN split (prompt/completion) in S3.
 
-        Filters Perfect Blend to the code source, carves a disjoint
-        4000-train / 400-val split (fixed seed), tokenizes each split, and
-        uploads them to S3 under `code/train` and `code/validation`.
+        Filters Perfect Blend to the code source, takes the same deterministic
+        4000-example train split as the other flows, formats it to
+        prompt/completion (for completion-only training), and uploads it to
+        `code/train_pc`. No validation split is produced here.
         """
         cfg = self.data_config
-        train_exists = self.data_store.already_exists(store_key=cfg.train_store_key)
-        val_exists = self.data_store.already_exists(store_key=cfg.val_store_key)
 
-        if train_exists and val_exists:
-            print("Code train/val splits already in S3. Skipping re upload")
+        if self.data_store.already_exists(store_key=cfg.train_pc_store_key):
+            print("Code train prompt-completion split already in S3. Skipping re upload")
         else:
             print("Building deterministic code split from Perfect Blend...")
-            train_dataset, val_dataset = self.data_store.load_code_split(
+            train_dataset, _ = self.data_store.load_code_split(
                 dataset_path=cfg.hugging_face_name,
                 code_source=cfg.code_source,
                 n_train=cfg.code_n_train,
@@ -66,17 +65,15 @@ class DeepSeekFlow(FlowSpec):
             print("Loading model tokenizer...")
             tokenizer = AutoTokenizer.from_pretrained(self.training_config.model_name)
 
-            for split_name, split_ds, local_path, store_key in (
-                ("train", train_dataset, cfg.train_local_path, cfg.train_store_key),
-                ("validation", val_dataset, cfg.val_local_path, cfg.val_store_key),
-            ):
-                print(f"Tokenizing {split_name} split ({len(split_ds)} examples)...")
-                tokenized = self.data_store.format_and_tokenize(
-                    dataset=split_ds, tokenizer=tokenizer
-                )
-                print(f"Uploading {split_name} split to S3 ({store_key})...")
-                tokenized.save_to_disk(local_path)
-                self.data_store.upload(local_path=local_path, store_key=store_key)
+            print(f"Formatting train split to prompt/completion ({len(train_dataset)} examples)...")
+            train_pc = self.data_store.format_prompt_completion(
+                dataset=train_dataset, tokenizer=tokenizer
+            )
+            train_pc.save_to_disk(cfg.train_pc_local_path)
+            print(f"Uploading train split to S3 ({cfg.train_pc_store_key})...")
+            self.data_store.upload(
+                local_path=cfg.train_pc_local_path, store_key=cfg.train_pc_store_key
+            )
 
         self.next(self.train)
 
@@ -84,11 +81,11 @@ class DeepSeekFlow(FlowSpec):
     @pypi(packages=_PACKAGES)
     @step
     def train(self):
-        print("Downloading tokenized code train split...")
+        print("Downloading prompt-completion code train split...")
 
         self.data_store.download(
-            local_path=self.data_config.train_local_path,
-            store_key=self.data_config.train_store_key,
+            local_path=self.data_config.train_pc_local_path,
+            store_key=self.data_config.train_pc_store_key,
         )
 
         from metaflow import TorchrunSingleNodeMultiGPU
@@ -98,26 +95,29 @@ class DeepSeekFlow(FlowSpec):
         executor.run(
             entrypoint="flows/train_deep_seek_transformers/train.py",
             entrypoint_args={
-                "dataset_path": self.data_config.train_local_path,
+                "dataset_path": self.data_config.train_pc_local_path,
                 "model_id": self.training_config.model_name,
                 "bf16": True,
                 "learning_rate": 2e-4,
                 "output_dir": f"/tmp/model/deepseekv2lite_{1}",
                 "overwrite_output_dir": True,
                 "warmup_steps": 5,
-                "weight_decay": 0.01, 
+                "weight_decay": 0.01,
                 "packing": False,
+                # Completion-only: mask the prompt, train only on the assistant
+                # completion. No validation here.
+                "completion_only_loss": True,
+                "max_length": self.data_config.train_max_length,
                 "logging_dir": f"/tmp/model/deepseeklitev2history_{1}",
                 "logging_steps": 1,
                 "report_to": "none",
-                "per_device_train_batch_size": 4,
+                "per_device_train_batch_size": 1,
                 "num_train_epochs": 1,
                 "gradient_accumulation_steps": 4,
-                "max_steps": 125,
+                "max_steps": 1000,
                 "save_steps": 100,
                 "seed": 42,
                 "data_seed": 42,
-                "max_seq_length": 512,
             },
             nproc_per_node=1,
         )

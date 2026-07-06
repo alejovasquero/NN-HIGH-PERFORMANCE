@@ -20,9 +20,9 @@ class DataStoreConfig:
     code_source: str = "theblackcat102/evol-codealpaca-v1"
     code_seed: int = 42
     code_n_train: int = 4000
-    code_n_val: int = 400
-    # S3 store keys (under s3_prefix) and matching local paths for each split.
-    train_store_key: str = "code/train"
-    val_store_key: str = "code/validation"
-    train_local_path: str = "/tmp/code-blend/train"
-    val_local_path: str = "/tmp/code-blend/validation"
+    code_n_val: int = 400  # only used to keep the deterministic split identical
+    # Code training split in prompt/completion format (completion-only training),
+    # sharing the same S3 object as the AWS flow. No validation split here.
+    train_pc_store_key: str = "code/train_pc"
+    train_pc_local_path: str = "/tmp/code-blend/train_pc"
+    train_max_length: int = 2048

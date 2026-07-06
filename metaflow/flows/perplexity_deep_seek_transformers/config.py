@@ -21,7 +21,7 @@ class DataStoreConfig:
     code_source: str = "theblackcat102/evol-codealpaca-v1"
     code_seed: int = 42
     code_n_train: int = 4000
-    code_n_val: int = 2
+    code_n_val: int = 400 
     # S3 store keys (under s3_prefix) and matching local paths for each split.
     train_store_key: str = "code/train"
     val_store_key: str = "code/validation"

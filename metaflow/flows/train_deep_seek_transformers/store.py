@@ -105,6 +105,37 @@ class DataStore(BaseStore):
         print(f"Code split -> train: {len(train_dataset)}, val: {len(val_dataset)}")
         return train_dataset, val_dataset
 
+    def format_prompt_completion(self, dataset: datasets.Dataset, tokenizer: Any) -> datasets.Dataset:
+        """Split each conversation into `prompt` + `completion` (conversational).
+
+        SFTTrainer uses this format for completion-only loss: the prompt (user
+        turns) is masked, so training is scored ONLY over the assistant's
+        completion. `text` is kept for inspection and MUST be dropped before the
+        SFTTrainer (train.py does it).
+        """
+        dataset = standardize_sharegpt(dataset)
+
+        def _split(sample: Any) -> dict:
+            messages = sample["conversations"]
+            text = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False
+            )
+            return {
+                "text": text,
+                "prompt": messages[:-1],
+                "completion": [messages[-1]],
+            }
+
+        pc_dataset = dataset.map(
+            _split,
+            batched=False,
+            keep_in_memory=True,
+            remove_columns=list(dataset.features),
+        )
+        print("Sample prompt:", pc_dataset[0]["prompt"])
+        print("Sample completion:", pc_dataset[0]["completion"])
+        return pc_dataset
+
     def format_and_tokenize(self, dataset: datasets.Dataset, tokenizer: Any) -> datasets.Dataset:
         def _format_conversation(sample: Any) -> datasets.Dataset:
             text = tokenizer.apply_chat_template(

@@ -97,8 +97,18 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
     lora_config = LoraConfig(
         r=16,
         lora_alpha=16,
-        target_modules="all-linear",
-        lora_dropout=0,
+        target_modules=[
+            "q_proj", 
+            "kv_a_proj_with_mqa", 
+            "kv_b_proj", 
+            "o_proj",
+            
+            # --- Módulos del MLP / Expertos (MoE) ---
+            "gate_proj", 
+            "up_proj", 
+            "down_proj"
+        ],
+        lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM"
     )
@@ -115,6 +125,11 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
         callbacks=[MetaflowBridge(batch_size=training_args.per_device_train_batch_size, rank=os.environ.get("RANK"))],
     )
     print("Trainer created")
+
+    # SFTTrainer.__init__ re-freezes all params; restore LoRA trainability after it
+    for name, param in model.named_parameters():
+        if "lora_" in name:
+            param.requires_grad_(True)
 
     train_dataloader = trainer.get_train_dataloader()
     num_batches = len(train_dataloader)
