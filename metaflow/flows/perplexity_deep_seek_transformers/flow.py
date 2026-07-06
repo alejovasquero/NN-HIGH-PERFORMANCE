@@ -1,4 +1,5 @@
-from metaflow import FlowSpec, step, pypi
+from metaflow import FlowSpec, step, batch
+import os
 import config
 import store
 from transformers import AutoTokenizer
@@ -37,12 +38,22 @@ class PerplexityFlow(FlowSpec):
     def results_store(self) -> store.ResultsStore:
         return store.ResultsStore(self.data_config.perplexity_results_s3_prefix)
 
-    @pypi(packages=_PACKAGES)
+    @batch(
+        gpu=1,
+        cpu=1,
+        memory=16000,
+        image=_DOCKER_IMAGE
+    )
     @step
     def start(self):
         self.next(self.prepare_eval_dataset)
 
-    @pypi(packages=_PACKAGES)
+    @batch(
+        gpu=1,
+        cpu=1,
+        memory=16000,
+        image=_DOCKER_IMAGE
+    )
     @step
     def prepare_eval_dataset(self):
         """Build the deterministic code validation split (same rows as the
@@ -70,7 +81,7 @@ class PerplexityFlow(FlowSpec):
 
             print(f"Formatting validation split to prompt/completion ({len(val_dataset)} examples)...")
             val_pc = self.data_store.format_prompt_completion(
-                dataset=val_dataset, tokenizer=tokenizer
+                dataset=val_dataset, tokenizer=tokenizer, max_length=cfg.eval_max_length
             )
 
             val_pc.save_to_disk(cfg.val_text_local_path)
@@ -82,7 +93,12 @@ class PerplexityFlow(FlowSpec):
         self.next(self.compute_perplexity)
 
     @gpu_profile()
-    @pypi(packages=_PACKAGES)
+    @batch(
+        gpu=1,
+        cpu=1,
+        memory=16000,
+        image=_DOCKER_IMAGE
+    )
     @step
     def compute_perplexity(self):
         cfg = self.data_config
@@ -96,8 +112,14 @@ class PerplexityFlow(FlowSpec):
         from metaflow import TorchrunSingleNodeMultiGPU
 
         executor = TorchrunSingleNodeMultiGPU()
+        # Resolve the entrypoint next to this flow file so it works both locally
+        # (repo root) and on @batch, where Metaflow flattens the flow's files to
+        # the package root (/workspace/metaflow/perplexity.py).
+        entrypoint = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "perplexity.py"
+        )
         executor.run(
-            entrypoint="flows/perplexity_deep_seek_transformers/perplexity.py",
+            entrypoint=entrypoint,
             entrypoint_args={
                 "model_id": self.training_config.model_name,
                 "dataset_path": cfg.val_text_local_path,
@@ -119,7 +141,12 @@ class PerplexityFlow(FlowSpec):
 
         self.next(self.end)
 
-    @pypi(packages=_PACKAGES)
+    @batch(
+        gpu=1,
+        cpu=1,
+        memory=16000,
+        image=_DOCKER_IMAGE
+    )
     @step
     def end(self):
         print("Finished")

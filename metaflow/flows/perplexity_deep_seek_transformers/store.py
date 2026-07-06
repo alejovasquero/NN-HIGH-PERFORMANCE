@@ -105,7 +105,7 @@ class DataStore(BaseStore):
         print(f"Code split -> train: {len(train_dataset)}, val: {len(val_dataset)}")
         return train_dataset, val_dataset
 
-    def format_prompt_completion(self, dataset: datasets.Dataset, tokenizer: Any) -> datasets.Dataset:
+    def format_prompt_completion(self, dataset: datasets.Dataset, tokenizer: Any, max_length: int) -> datasets.Dataset:
         """Build `text` + `prompt` + `completion` columns from each conversation.
 
         - `prompt`/`completion` are the conversational split (user turns vs the
@@ -114,6 +114,10 @@ class DataStore(BaseStore):
           assistant's completion. The eval split is single-turn, so this is
           exact assistant-only scoring.
         - `text` is the full chat-template rendering, kept for inspection.
+
+        Examples whose prompt alone is >= max_length are dropped: after the
+        collator truncates prompt+completion to max_length, no completion token
+        would survive, leaving an all-masked sequence -> NaN loss.
 
         IMPORTANT: `text` must be dropped before handing the dataset to
         SFTTrainer with `completion_only_loss=True` (its collator routes any
@@ -139,6 +143,13 @@ class DataStore(BaseStore):
             keep_in_memory=True,
             remove_columns=list(dataset.features),
         )
+
+        before = len(pc_dataset)
+        pc_dataset = pc_dataset.filter(
+            lambda ex: len(tokenizer.apply_chat_template(ex["prompt"])) < max_length
+        )
+        print(f"Dropped {before - len(pc_dataset)} examples with prompt >= {max_length} -> {len(pc_dataset)} remain")
+
         sample_idx = 0
         print("Sample text:", pc_dataset[sample_idx]["text"])
         print("Sample prompt:", pc_dataset[sample_idx]["prompt"])

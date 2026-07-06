@@ -67,7 +67,7 @@ class DeepSeekFlow(FlowSpec):
 
             print(f"Formatting train split to prompt/completion ({len(train_dataset)} examples)...")
             train_pc = self.data_store.format_prompt_completion(
-                dataset=train_dataset, tokenizer=tokenizer
+                dataset=train_dataset, tokenizer=tokenizer, max_length=cfg.train_max_length
             )
             train_pc.save_to_disk(cfg.train_pc_local_path)
             print(f"Uploading train split to S3 ({cfg.train_pc_store_key})...")

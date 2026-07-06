@@ -74,7 +74,7 @@ class DeepSeekFlow(FlowSpec):
                 ("validation", val_dataset, cfg.val_pc_local_path, cfg.val_pc_store_key),
             ):
                 print(f"Formatting {name} split to prompt/completion ({len(split_ds)} examples)...")
-                pc = self.data_store.format_prompt_completion(dataset=split_ds, tokenizer=tokenizer)
+                pc = self.data_store.format_prompt_completion(dataset=split_ds, tokenizer=tokenizer, max_length=cfg.eval_max_length)
                 pc.save_to_disk(local_path)
                 print(f"Uploading {name} split to S3 ({store_key})...")
                 self.data_store.upload(local_path=local_path, store_key=store_key)

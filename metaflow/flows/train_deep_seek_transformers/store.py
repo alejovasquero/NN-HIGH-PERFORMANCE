@@ -105,13 +105,17 @@ class DataStore(BaseStore):
         print(f"Code split -> train: {len(train_dataset)}, val: {len(val_dataset)}")
         return train_dataset, val_dataset
 
-    def format_prompt_completion(self, dataset: datasets.Dataset, tokenizer: Any) -> datasets.Dataset:
+    def format_prompt_completion(self, dataset: datasets.Dataset, tokenizer: Any, max_length: int) -> datasets.Dataset:
         """Split each conversation into `prompt` + `completion` (conversational).
 
         SFTTrainer uses this format for completion-only loss: the prompt (user
         turns) is masked, so training is scored ONLY over the assistant's
         completion. `text` is kept for inspection and MUST be dropped before the
         SFTTrainer (train.py does it).
+
+        Examples whose prompt alone is >= max_length are dropped: after the
+        collator truncates prompt+completion to max_length, no completion token
+        would survive, leaving an all-masked sequence -> NaN loss.
         """
         dataset = standardize_sharegpt(dataset)
 
@@ -132,6 +136,13 @@ class DataStore(BaseStore):
             keep_in_memory=True,
             remove_columns=list(dataset.features),
         )
+
+        before = len(pc_dataset)
+        pc_dataset = pc_dataset.filter(
+            lambda ex: len(tokenizer.apply_chat_template(ex["prompt"])) < max_length
+        )
+        print(f"Dropped {before - len(pc_dataset)} examples with prompt >= {max_length} -> {len(pc_dataset)} remain")
+
         print("Sample prompt:", pc_dataset[0]["prompt"])
         print("Sample completion:", pc_dataset[0]["completion"])
         return pc_dataset
