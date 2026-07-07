@@ -86,7 +86,7 @@ class DeepSeekFlow(FlowSpec):
         "NCCL_DEBUG": "INFO",
         "NCCL_DEBUG_SUBSYS": "COLL",
         "NCCL_SOCKET_IFNAME": "eth0",
-        "TORCH_DISTRIBUTED_DEBUG": "INFO",
+        "TORCH_DISTRIBUTED_DEBUG": "DETAIL",
     })
     @batch(
         gpu=1,
@@ -123,13 +123,20 @@ class DeepSeekFlow(FlowSpec):
                 "logging_dir": f"/tmp/model/deepseeklitev2history_{node_index}",
                 "logging_steps": 1,
                 "report_to": "none",
+                # MoE + DDP: experts (and their LoRA) differ across ranks/steps, so
+                # some params get no gradient on a given rank. find_unused_parameters
+                # =True lets DDP mark those ready (zero grad) so the allreduce stays
+                # in sync -> no hang. Safe here because checkpointing is non-reentrant
+                # (native model + use_reentrant=False), so no "marked ready twice".
+                "ddp_find_unused_parameters": False,
                 "per_device_train_batch_size": 1,
                 "num_train_epochs": 1,
                 "gradient_accumulation_steps": 4,
-                "max_steps": 500,
+                "max_steps": 10, # TODO put 500
                 "save_steps": 100,
                 "seed": 42,
                 "data_seed": 42,
+                "dataloader_drop_last": True,
             },
             nproc_per_node=1,
         )

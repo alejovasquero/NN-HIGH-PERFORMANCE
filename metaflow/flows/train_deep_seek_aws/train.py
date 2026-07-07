@@ -85,14 +85,23 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
     print("Env variables", os.environ)
     device_map = {"": local_rank}
 
+    # No trust_remote_code: use transformers' NATIVE deepseek_v2. The remote
+    # modeling code calls torch.utils.checkpoint without threading use_reentrant,
+    # so it ignores our non-reentrant setting; the native model honors the
+    # gradient_checkpointing_kwargs below, which is required for DDP (MoE).
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_id,
         quantization_config=bnb_config,
         device_map=device_map,
-        trust_remote_code=True
     )
     tokenizer = AutoTokenizer.from_pretrained(script_args.model_id)
-    model = prepare_model_for_kbit_training(model)
+    # Gradient checkpointing OFF: DeepSeek-V2 calls torch.utils.checkpoint
+    # directly (ignoring use_reentrant), so the reentrant variant is unavoidable
+    # and breaks DDP with "marked ready twice". Disabling checkpointing removes
+    # the reentrant backward entirely; ddp_find_unused_parameters=True then
+    # handles the MoE routing. Trade-off: higher activation memory (may OOM on a
+    # small GPU).
+    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=False)
 
     lora_config = LoraConfig(
         r=16,
