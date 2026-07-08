@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.8.0-cuda12.9-cudnn9-runtime
+FROM pytorch/pytorch:2.8.0-cuda12.9-cudnn9-devel
 
 
 
@@ -24,7 +24,8 @@ RUN pip install --no-cache-dir --break-system-packages \
     matplotlib==3.10.8 \
     torch==2.8.0 \
     peft==0.19.1 \
-    unsloth==2025.11.2
+    unsloth==2025.11.2 \
+    deepspeed==0.19.2
 
 ENV CC=gcc
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
@@ -34,3 +35,5 @@ RUN ln -sf /usr/bin/python3 /usr/bin/python
 
 RUN mkdir /logs && chown 1000 /logs
 RUN mkdir /metaflow && chown 1000 /metaflow
+
+ENTRYPOINT []

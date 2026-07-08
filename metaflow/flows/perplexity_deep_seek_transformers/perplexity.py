@@ -48,56 +48,39 @@ def main() -> None:
     dataset = dataset.select_columns(["prompt", "completion"])
     print(eval_args)
 
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+
+    # Load in 4-bit (NF4 + double quant), same config as the fine-tuned QLoRA
+    # base -> base vs fine-tuned perplexity comparable, and both match the local
+    # 4-bit setup. (The earlier "4-bit hangs DeepSpeed" was the NCCL_DEBUG pipe
+    # deadlock, now fixed; and this base eval is single-node, no DeepSpeed.)
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
         bnb_4bit_use_double_quant=True,
+        bnb_4bit_compute_dtype=torch.bfloat16,
     )
-    local_rank = int(os.environ.get("LOCAL_RANK", 0))
-    device_map = {"": local_rank}
-
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_id,
         quantization_config=bnb_config,
-        device_map=device_map,
+        device_map={"": local_rank},
+        torch_dtype=torch.bfloat16,
         trust_remote_code=True,
     )
     tokenizer = AutoTokenizer.from_pretrained(script_args.model_id)
     model.eval()
-    print("Base model loaded (no LoRA, no training)")
+    print("Base model loaded in 4-bit (no LoRA, no training)")
 
-    # transformers' Trainer refuses a purely-quantized (4-bit) model unless it
-    # has trainable adapters. Attach a LoRA adapter to satisfy the check. LoRA is
-    # zero-initialized (B = 0), so W + BA = W: the adapter changes nothing and
-    # this measures the BASE model's perplexity exactly.
-    peft_config = LoraConfig(
-        r=16,
-        lora_alpha=16,
-        target_modules=[
-            "q_proj",
-            "kv_a_proj_with_mqa",
-            "kv_b_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj",
-        ],
-        lora_dropout=0,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-
-    # We only call evaluate(), but SFTTrainer.__init__ unconditionally reads a
-    # sample from train_dataset (next(iter(train_dataset))), so it must not be
-    # None. Pass the same dataset as train_dataset — it is never trained on.
+    # No peft_config: the model is not quantized, so the Trainer's "cannot train
+    # a purely quantized model" guard doesn't apply -> the zero-LoRA trick isn't
+    # needed. SFTTrainer.__init__ still reads a sample from train_dataset, so
+    # pass the eval dataset there too (it is never trained on).
     trainer = SFTTrainer(
         model=model,
         processing_class=tokenizer,
         train_dataset=dataset,
         eval_dataset=dataset,
         args=eval_args,
-        peft_config=peft_config,
     )
 
     metrics = trainer.evaluate()

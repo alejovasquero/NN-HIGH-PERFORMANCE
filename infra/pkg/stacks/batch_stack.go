@@ -138,6 +138,18 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 		nil,
 	)
 
+	userData := awsec2.UserData_ForLinux(nil)
+	userData.AddCommands(
+		jsii.String(`echo "ec2-user:YourStrongPasswordHere" | chpasswd`),
+	)
+
+	multipartUserData := awsec2.NewMultipartUserData(nil)
+	multipartUserData.AddUserDataPart(
+		userData,
+		jsii.String(`text/x-shellscript; charset="us-ascii"`),
+		jsii.Bool(true),
+	)
+
 	launchTemplate := awsec2.NewLaunchTemplate(construct, pointer.ToString("Device"), &awsec2.LaunchTemplateProps{
 		BlockDevices: &[]*awsec2.BlockDevice{
 			{
@@ -149,6 +161,7 @@ func buildComputeEnvironment(construct constructs.Construct, input BatchStackInp
 					}),
 			},
 		},
+		UserData: multipartUserData,
 	})
 
 	computeEnv := awsbatch.NewCfnComputeEnvironment(

@@ -1,10 +1,35 @@
 from metaflow import FlowSpec, step, batch, torchrun, current, environment
+import json
 import config
 import store
 from transformers import AutoTokenizer
 from gpu_profile import gpu_profile
 
 _DOCKER_IMAGE = "alejovasquero/cuda-metaflow:latest"
+
+# DeepSpeed ZeRO-2 (no offload, no fused optimizer -> no CUDA op compilation, runs
+# on a runtime image without nvcc). Fixed reduce-scatter over all trainable params
+# every step (no DDP find_unused coordination) -> handles MoE routing that breaks
+# plain DDP. Values MUST match the train entrypoint_args below:
+#   per_device_train_batch_size=1, gradient_accumulation_steps=4, 2 nodes
+#   -> train_batch_size = 1 * 4 * 2 = 8
+_DS_CONFIG = {
+    "bf16": {"enabled": True},
+    "zero_optimization": {
+        "stage": 2,
+        "allgather_partitions": True,
+        "allgather_bucket_size": 2e8,
+        "overlap_comm": True,
+        "reduce_scatter": True,
+        "reduce_bucket_size": 2e8,
+        "contiguous_gradients": True,
+    },
+    "train_micro_batch_size_per_gpu": 1,
+    "gradient_accumulation_steps": 4,
+    "train_batch_size": 8,
+    "gradient_clipping": 1.0,
+}
+_DS_CONFIG_PATH = "/tmp/ds_config.json"
 
 class DeepSeekFlow(FlowSpec):
 
@@ -82,11 +107,20 @@ class DeepSeekFlow(FlowSpec):
         self.next(self.train, num_parallel=2)
 
     @gpu_profile()
+    # NCCL_DEBUG=INFO + SUBSYS=COLL logueaba CADA colectivo. _broadcast_model
+    # encola miles de broadcasts (MoE) -> miles de write() a stdout, que es un
+    # pipe hacia mflog; el pipe se llena y write() se BLOQUEA dentro del enqueue
+    # de NCCL -> el broadcast se cuelga (confirmado con py-spy --native: MainThread
+    # parado en ncclDebugLog -> fwrite -> write). WARN elimina ese flood.
     @environment(vars={
-        "NCCL_DEBUG": "INFO",
-        "NCCL_DEBUG_SUBSYS": "COLL",
+        "NCCL_DEBUG": "WARN",
         "NCCL_SOCKET_IFNAME": "eth0",
-        "TORCH_DISTRIBUTED_DEBUG": "DETAIL",
+        "DEEPSPEED_TIMEOUT": "420",
+        "NCCL_BUFFSIZE": "67108864",
+        "NCCL_TIMEOUT": "420",
+        "NCCL_SOCKET_NTHREADS": "4",
+        "NCCL_NSOCKS_PERTHREAD": "4",
+        "ACCELERATE_DDP_TIMEOUT": "420",
     })
     @batch(
         gpu=1,
@@ -103,6 +137,11 @@ class DeepSeekFlow(FlowSpec):
 
         self.data_store.download(local_path=cfg.train_pc_local_path, store_key=cfg.train_pc_store_key)
         self.data_store.download(local_path=cfg.val_pc_local_path, store_key=cfg.val_pc_store_key)
+
+        # Write the DeepSpeed config on this node so train.py can point at it.
+        with open(_DS_CONFIG_PATH, "w") as f:
+            json.dump(_DS_CONFIG, f)
+
         current.torch.run(
             entrypoint="train.py",
             entrypoint_args={
@@ -123,20 +162,22 @@ class DeepSeekFlow(FlowSpec):
                 "logging_dir": f"/tmp/model/deepseeklitev2history_{node_index}",
                 "logging_steps": 1,
                 "report_to": "none",
-                # MoE + DDP: experts (and their LoRA) differ across ranks/steps, so
-                # some params get no gradient on a given rank. find_unused_parameters
-                # =True lets DDP mark those ready (zero grad) so the allreduce stays
-                # in sync -> no hang. Safe here because checkpointing is non-reentrant
-                # (native model + use_reentrant=False), so no "marked ready twice".
-                "ddp_find_unused_parameters": False,
+                # DeepSpeed ZeRO-2 config (written above); handles the MoE routing
+                # that breaks plain DDP.
+                "deepspeed": _DS_CONFIG_PATH,
                 "per_device_train_batch_size": 1,
+                # Eval con batch 1: el default de HF (8) hace un tensor de logits
+                # [8, 2048, 102400] (~3.8 GB) que OOMea la L40S al calcular la
+                # perplexity final. Con 1 baja a ~0.5 GB y cabe.
+                "per_device_eval_batch_size": 1,
                 "num_train_epochs": 1,
                 "gradient_accumulation_steps": 4,
                 "max_steps": 10, # TODO put 500
                 "save_steps": 100,
                 "seed": 42,
                 "data_seed": 42,
-                "dataloader_drop_last": True,
+                "dataloader_drop_last": False,
+                # Fast fail: if a collective still hangs, dump at ~7 min (not 30).
             },
             nproc_per_node=1,
         )

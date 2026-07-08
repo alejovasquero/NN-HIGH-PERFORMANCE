@@ -43,7 +43,7 @@ class MetaflowBridge(TrainerCallback):
                 writer.writerow(["step", "loss", "learning_rate", "processed_data"])
 
     def on_log(self, args, state, control, logs=None, **kwargs):
-        print("Captured log", logs)
+        # print("Captured log", logs)
         if logs and "loss" in logs:
             with open(self.filename, 'a', newline='') as f:
                 writer = csv.writer(f)
@@ -75,47 +75,49 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
     print(training_args)
 
 
+    print("Env variables", os.environ)
+
+    # QLoRA: base en 4-bit (NF4 + double quant), cómputo en bf16. TODO el pipeline
+    # (local, multinodo y perplexity base) va en 4-bit para que:
+    #  - la comparación de TIEMPOS local vs multinodo no confunda precisión con
+    #    paralelismo (misma precisión en ambos), y
+    #  - la perplexity base vs fine-tuned sea comparable (ambas en 4-bit).
+    # El hang que antes se achacó a Params4bit era el pipe deadlock de NCCL_DEBUG
+    # (resuelto). device_map fija el modelo en la GPU local de cada rank porque
+    # bitsandbytes cuantiza en GPU al cargar (ZeRO-2, 1 GPU/nodo -> LOCAL_RANK=0).
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
         bnb_4bit_use_double_quant=True,
+        bnb_4bit_compute_dtype=torch.bfloat16,
     )
-    local_rank = int(os.environ.get("LOCAL_RANK", 0))
-    print("Env variables", os.environ)
-    device_map = {"": local_rank}
-
-    # No trust_remote_code: use transformers' NATIVE deepseek_v2. The remote
-    # modeling code calls torch.utils.checkpoint without threading use_reentrant,
-    # so it ignores our non-reentrant setting; the native model honors the
-    # gradient_checkpointing_kwargs below, which is required for DDP (MoE).
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_id,
         quantization_config=bnb_config,
-        device_map=device_map,
+        device_map={"": local_rank},
+        torch_dtype=torch.bfloat16,
+        trust_remote_code=True,
     )
     tokenizer = AutoTokenizer.from_pretrained(script_args.model_id)
-    # Gradient checkpointing OFF: DeepSeek-V2 calls torch.utils.checkpoint
-    # directly (ignoring use_reentrant), so the reentrant variant is unavoidable
-    # and breaks DDP with "marked ready twice". Disabling checkpointing removes
-    # the reentrant backward entirely; ddp_find_unused_parameters=True then
-    # handles the MoE routing. Trade-off: higher activation memory (may OOM on a
-    # small GPU).
-    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=False)
+    # Prepara el modelo 4-bit para entrenar: castea layernorms a fp32, habilita
+    # input grads y gradient checkpointing para que los grads lleguen a los
+    # adapters LoRA.
+    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
     lora_config = LoraConfig(
         r=16,
         lora_alpha=16,
+        # Prueba: solo proyecciones de atención (MLA). Se quitan los expertos MoE
+        # (gate/up/down_proj) para ver si el _broadcast_model deja de colgarse.
         target_modules=[
-            "q_proj", 
-            "kv_a_proj_with_mqa", 
-            "kv_b_proj", 
+            "q_proj",
+            "kv_a_proj_with_mqa",
+            "kv_b_proj",
             "o_proj",
-            
-            # --- Módulos del MLP / Expertos (MoE) ---
-            "gate_proj", 
-            "up_proj", 
-            "down_proj"
+            "gate_proj",
+            "up_proj",
+            "down_proj",
         ],
         lora_dropout=0.05,
         bias="none",
@@ -138,7 +140,7 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
     # SFTTrainer.__init__ re-freezes all params; restore LoRA trainability after it
     for name, param in model.named_parameters():
         if "lora_" in name:
-            param.requires_grad_(True)
+           param.requires_grad_(True)
 
     train_dataloader = trainer.get_train_dataloader()
     num_batches = len(train_dataloader)
@@ -154,9 +156,15 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
         checkpoints = [d for d in os.listdir(training_args.output_dir) if "checkpoint" in d]
         checkpoint_exists = len(checkpoints) > 0
 
+    # True if HF detected the deepspeed config -> ZeRO engine instead of DDP.
+    print("DeepSpeed enabled:", trainer.is_deepspeed_enabled)
     print("Training started")
     model.print_trainable_parameters()
     trainer.train(resume_from_checkpoint=checkpoint_exists)
+
+    # After train() the model is wrapped; should print "DeepSpeedEngine"
+    # (not "DistributedDataParallel") if ZeRO is actually driving the training.
+    print("Wrapped model:", type(trainer.model_wrapped).__name__)
 
     # Final assistant-only perplexity, computed ONCE after training (no periodic
     # eval, so it adds no per-step overhead). perplexity = exp(eval_loss).
