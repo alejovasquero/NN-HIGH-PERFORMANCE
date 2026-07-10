@@ -96,7 +96,11 @@ class PerplexityFlow(FlowSpec):
     @batch(
         gpu=1,
         cpu=1,
-        memory=16000,
+        # DeepSeek-V2-Lite is ~15.7B params: the bf16 checkpoint is ~31GB across
+        # 4 shards. Even loading in 4-bit, from_pretrained reads each shard's raw
+        # weights into host RAM before quantizing/moving to GPU, so 16GB gets
+        # SIGKILL'd (-9) by the OOM killer mid-shard. Give it real headroom.
+        memory=60000,
         image=_DOCKER_IMAGE
     )
     @step

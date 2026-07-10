@@ -108,8 +108,6 @@ def train_model(script_args: ScriptArguments, training_args: SFTConfig) -> None:
     lora_config = LoraConfig(
         r=16,
         lora_alpha=16,
-        # Prueba: solo proyecciones de atención (MLA). Se quitan los expertos MoE
-        # (gate/up/down_proj) para ver si el _broadcast_model deja de colgarse.
         target_modules=[
             "q_proj",
             "kv_a_proj_with_mqa",

@@ -172,11 +172,11 @@ class DeepSeekFlow(FlowSpec):
                 "per_device_eval_batch_size": 1,
                 "num_train_epochs": 1,
                 "gradient_accumulation_steps": 4,
-                "max_steps": 10, # TODO put 500
+                "max_steps": 500, # TODO put 500
                 "save_steps": 100,
                 "seed": 42,
                 "data_seed": 42,
-                "dataloader_drop_last": False,
+                "dataloader_drop_last": True,
                 # Fast fail: if a collective still hangs, dump at ~7 min (not 30).
             },
             nproc_per_node=1,

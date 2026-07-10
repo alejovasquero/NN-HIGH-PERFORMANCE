@@ -6,9 +6,12 @@ tokenization at `max_length`, same collator/masking):
 
     perplexity = exp(eval_loss)
 
-The base model is loaded in 4-bit with NO LoRA and NO training — it is evaluated
-as-is. The eval dataset is the chat-template-formatted TEXT split produced by
-`prepare_eval_dataset`; the trainer tokenizes it at eval time.
+The base model is loaded in 4-bit and evaluated as-is with NO training. A
+zero-init LoRA adapter is attached only to satisfy the Trainer's "quantized model
+needs trainable adapters" guard; since the adapter's delta is 0 and nothing
+trains, the forward pass equals the base model's. The eval dataset is the
+chat-template-formatted TEXT split produced by `prepare_eval_dataset`; the trainer
+tokenizes it at eval time.
 """
 
 import csv
@@ -71,16 +74,40 @@ def main() -> None:
     model.eval()
     print("Base model loaded in 4-bit (no LoRA, no training)")
 
-    # No peft_config: the model is not quantized, so the Trainer's "cannot train
-    # a purely quantized model" guard doesn't apply -> the zero-LoRA trick isn't
-    # needed. SFTTrainer.__init__ still reads a sample from train_dataset, so
-    # pass the eval dataset there too (it is never trained on).
+    # The model IS 4-bit quantized, so transformers.Trainer.__init__ rejects it
+    # ("cannot fine-tune a purely quantized model") unless trainable adapters are
+    # attached -- the guard fires in the constructor regardless of whether we ever
+    # call train(). Attach a zero-LoRA adapter: LoRA's B matrix is zero-init, so
+    # the delta is 0 and the forward pass is numerically identical to the base
+    # model. Nothing trains here, so the adapter stays at zero -> this is the true
+    # base-model perplexity. Same target modules as the QLoRA training run, so the
+    # k-bit prep (layernorm/lm_head upcast) matches the fine-tuned setup too.
+    peft_config = LoraConfig(
+        r=16,
+        lora_alpha=32,
+        target_modules=[
+            "q_proj",
+            "kv_a_proj_with_mqa",
+            "kv_b_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ],
+        lora_dropout=0.0,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+
+    # SFTTrainer.__init__ still reads a sample from train_dataset, so pass the eval
+    # dataset there too (it is never trained on).
     trainer = SFTTrainer(
         model=model,
         processing_class=tokenizer,
         train_dataset=dataset,
         eval_dataset=dataset,
         args=eval_args,
+        peft_config=peft_config,
     )
 
     metrics = trainer.evaluate()
